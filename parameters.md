@@ -12,6 +12,13 @@ The model has four layers, each built on top of the previous one:
 
 > Scope note: ID/UUID packing is deliberately **out of scope** here — that is the last step.
 > This document only defines *what* the parameters mean and their natural ranges.
+>
+> Implementation note: the **enforced** ranges (slider `min`/`max`/`step` + input clamping) live in
+> one place — `PARAM_RANGES` in `crates/shell-core/src/lib.rs`. The mesh generator clamps every input
+> to it and the web UI configures its sliders from it (via the wasm `param_ranges()` export), so the
+> two can't drift. The ranges in the tables below describe **biological intent**; the enforced ones
+> span the real **coiled-shell** subset of that (the degenerate high-W limpet/single-bivalve-valve
+> extreme is out of scope).
 
 ---
 
@@ -37,7 +44,7 @@ surface. These three alone already span most of the natural variety ("Raup's cub
 | Param | Name | Meaning | Range (typical) | Natural examples |
 |-------|------|---------|-----------------|------------------|
 | **W** | Whorl expansion rate | How much the tube widens per full revolution (ratio of whorl size one turn apart). Log-scaled. | 1 – 10⁴ — snails ~1.1–3, *Nautilus* ~3, clams/limpets very high | low W → slender augers; high W → globose snails, limpets |
-| **D** | Distance from axis | How far the generating curve sits from the coiling axis, relative to its own size. Controls open vs. tight coiling. | 0 – ~0.9 | D≈0 → whorls touch/overlap (most snails); high D → open coil, wide umbilicus (sundials, worm shells) |
+| **D** | Distance from axis | How far the generating curve sits from the coiling axis, relative to its own size. Controls open vs. tight coiling. | 0 – ~0.95 | D≈0 → whorls touch/overlap (most snails); high D → open coil, wide umbilicus (sundials, worm shells) |
 | **T** | Translation rate | How fast the curve travels *along* the axis per revolution — the "longitudinal shift". | 0 – ~6 | T=0 → flat planispiral (*Nautilus*, *Planorbis*); high T → tall spires/turrets (augers, *Turritella*) |
 | **n** | Number of whorls | Total revolutions the tube makes (overall length/completeness). | 0.5 – ~20 | 0.5 → limpet cap; 15–20 → long augers |
 | **r₀** | Initial aperture size | Absolute size of the generating curve at the start. Mostly a **scale** factor — shape is scale-invariant, so often fixed. | model units | sets final shell size, not its form |
@@ -50,7 +57,7 @@ be added later.
 
 | Param | Name | Meaning | Range (typical) | Notes |
 |-------|------|---------|-----------------|-------|
-| **S_ar** | Aperture aspect ratio | Height ÷ width of the elliptical cross-section. | 0.3 – 3.0 | 1 = circular tube (*Nautilus*); elongated → oval apertures |
+| **S_ar** | Aperture aspect ratio | Height ÷ width of the elliptical cross-section. | 0.3 – 4.0 | 1 = circular tube (*Nautilus*); elongated → oval apertures (cones, augers) |
 | **S_tilt** | Aperture tilt | Rotation of the cross-section relative to the coiling plane. | -45° – +45° | tilts the opening, affects how whorls stack |
 
 ---
@@ -73,7 +80,7 @@ reticulata*).
 |-------|------|---------|-----------------|
 | **rib_ax_count** | Axial rib / wave count | Number of ribs (or waves) running *across* the whorl, per revolution. A non-integer count makes ribs drift/stagger across whorls. | 0 – 40 |
 | **rib_ax_amp** | Axial amplitude | Radial swell relative to tube radius; high = structural wave, low = fine rib. | 0 – 0.6 |
-| **rib_sp_count** | Spiral cord count | Number of cords running *along* the coil (parallel to the suture). | 0 – 30 |
+| **rib_sp_count** | Spiral cord count | Number of cords running *along* the coil (parallel to the suture). | 0 – 60 |
 | **rib_sp_amp** | Spiral amplitude | Radial swell of spiral cords. | 0 – 0.6 |
 | **rib_sharp** | Profile sharpness | Smooth sine **wave** (0) → rounded fold → knife-edge ridge (1). | 0 – 1 |
 
@@ -86,7 +93,7 @@ bead→needle profile via a quadratic power curve (`power = 2 + sharp²·40`).
 
 | Param | Name | Meaning | Range (typical) |
 |-------|------|---------|-----------------|
-| **proj_count** | Projections per whorl | Number along the coil, per revolution. | 0 – 20 |
+| **proj_count** | Projections per whorl | Number along the coil, per revolution. | 0 – 30 |
 | **proj_rows** | Rows around aperture | 1 = single row (spine-like); ≥2 = evenly spaced rows (nodulose). | 0 – 5 |
 | **proj_pos** | Row position (φ) | Where the first row sits around the aperture (shoulder, periphery, base). | 0 – 2π |
 | **proj_size** | Size | Height/length relative to tube radius (bead → long spine). | 0 – 1.2 |

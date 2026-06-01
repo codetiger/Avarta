@@ -3,7 +3,7 @@
 //! JS calls `generate({ w, d, t, n, aspect, seg_theta, seg_phi })` and gets back
 //! a `JsMesh` whose getters return typed arrays ready for Three.js BufferAttributes.
 
-use shell_core::{generate as core_generate, ShellParams};
+use shell_core::{generate as core_generate, ShellParams, PARAM_RANGES};
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen(start)]
@@ -24,6 +24,16 @@ pub fn generate(params: JsValue) -> Result<JsMesh, JsValue> {
         uvs: m.uvs,
         indices: m.indices,
     })
+}
+
+/// The parameter range table — the single source of truth for every shape
+/// parameter's `min`/`max`/`step`/`default`/`integer`. Returns a JS array of
+/// `{ key, label, min, max, step, default, integer }` so the UI can configure
+/// its sliders from Rust instead of hardcoding ranges.
+#[wasm_bindgen]
+pub fn param_ranges() -> Result<JsValue, JsValue> {
+    serde_wasm_bindgen::to_value(PARAM_RANGES)
+        .map_err(|e| JsValue::from_str(&format!("param_ranges: {e}")))
 }
 
 /// Mesh buffers. The getters hand JS `Float32Array` / `Uint32Array` copies; call

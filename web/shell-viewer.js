@@ -12,7 +12,7 @@ import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { GTAOPass } from "three/addons/postprocessing/GTAOPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
-import init, { generate } from "./pkg/shell_wasm.js";
+import init, { generate, param_ranges } from "./pkg/shell_wasm.js";
 import wasmUrl from "./pkg/shell_wasm_bg.wasm?url";
 
 let wasmReady;
@@ -132,6 +132,16 @@ class ShellViewer extends HTMLElement {
     if (value == null) return;
     this.params[name] = parseFloat(value);
     if (this._loaded) this._rebuild();
+  }
+
+  /**
+   * The Rust-defined parameter range table — the single source of truth for
+   * every slider's min/max/step/default. Resolves after the wasm module loads.
+   * Returns an array of `{ key, label, min, max, step, default, integer }`.
+   */
+  async paramRanges() {
+    await ensureWasm();
+    return param_ranges();
   }
 
   /** Regenerate geometry from shape params. */

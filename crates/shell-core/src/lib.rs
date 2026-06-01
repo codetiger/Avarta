@@ -121,6 +121,108 @@ impl Default for ShellParams {
     }
 }
 
+/// Metadata for one user-facing shape parameter — the single source of truth
+/// for its valid range, slider configuration, and clamping behaviour.
+///
+/// The web UI reads this table (via the wasm `param_ranges()` export) to
+/// configure its sliders, and `generate` clamps every input to it, so a value
+/// can never be out of range regardless of where it came from.
+#[derive(Debug, Clone, Serialize)]
+pub struct ParamRange {
+    /// `ShellParams` field name (e.g. `"rib_ax_count"`). MUST match exactly.
+    pub key: &'static str,
+    /// Human-readable label for the UI slider.
+    pub label: &'static str,
+    pub min: f32,
+    pub max: f32,
+    pub step: f32,
+    pub default: f32,
+    /// Integer-valued: clamping rounds to the nearest integer; the UI shows no
+    /// decimals.
+    pub integer: bool,
+}
+
+/// The 19 user-facing shape parameters, in UI display order. This is the single
+/// source of truth for every parameter's range.
+///
+/// Bounds are chosen to span the real diversity of **coiled** shells (Raup 1966
+/// morphospace + malacology): augers/*Turritella* reach ~20 whorls, open coils
+/// reach D≈0.95, spiny *Murex* and fine spiral cords push the ornament counts.
+/// The degenerate high-W limpet/single-bivalve-valve case is intentionally out
+/// of scope. `seg_theta`/`seg_phi` are absent — they are internal and
+/// auto-derived from the ornament frequency, not user parameters.
+pub const PARAM_RANGES: &[ParamRange] = &[
+    // --- Layer 1: coiling geometry ---
+    ParamRange { key: "w",            label: "Whorl expansion W",       min: 1.05, max: 8.0,    step: 0.01, default: 2.0,  integer: false },
+    ParamRange { key: "d",            label: "Openness D",              min: 0.0,  max: 0.95,   step: 0.01, default: 0.15, integer: false },
+    ParamRange { key: "t",            label: "Translation T",           min: 0.0,  max: 12.0,   step: 0.01, default: 1.5,  integer: false },
+    ParamRange { key: "n",            label: "Whorls n",                min: 0.5,  max: 20.0,   step: 0.1,  default: 5.0,  integer: false },
+    ParamRange { key: "aspect",       label: "Aperture aspect",         min: 0.3,  max: 4.0,    step: 0.01, default: 1.0,  integer: false },
+    // --- Layer 2: ribs / cords / waves ---
+    ParamRange { key: "rib_ax_count", label: "Axial ribs / waves",      min: 0.0,  max: 40.0,   step: 1.0,  default: 0.0,  integer: true  },
+    ParamRange { key: "rib_ax_amp",   label: "Axial amplitude",         min: 0.0,  max: 0.6,    step: 0.01, default: 0.0,  integer: false },
+    ParamRange { key: "rib_sp_count", label: "Spiral cords",            min: 0.0,  max: 60.0,   step: 1.0,  default: 0.0,  integer: true  },
+    ParamRange { key: "rib_sp_amp",   label: "Spiral amplitude",        min: 0.0,  max: 0.6,    step: 0.01, default: 0.0,  integer: false },
+    ParamRange { key: "rib_sharp",    label: "Profile (wave → ridge)",  min: 0.0,  max: 1.0,    step: 0.01, default: 0.0,  integer: false },
+    // --- projections (nodules → spines) ---
+    ParamRange { key: "proj_count",   label: "Projections / whorl",     min: 0.0,  max: 30.0,   step: 1.0,  default: 0.0,  integer: true  },
+    ParamRange { key: "proj_rows",    label: "Rows around aperture",    min: 0.0,  max: 5.0,    step: 1.0,  default: 0.0,  integer: true  },
+    ParamRange { key: "proj_pos",     label: "Row position (φ)",        min: 0.0,  max: 6.2832, step: 0.01, default: 0.0,  integer: false },
+    ParamRange { key: "proj_size",    label: "Size",                    min: 0.0,  max: 1.2,    step: 0.01, default: 0.0,  integer: false },
+    ParamRange { key: "proj_sharp",   label: "Sharpness (bead → needle)", min: 0.0, max: 1.0,   step: 0.01, default: 0.0,  integer: false },
+    // --- varices ---
+    ParamRange { key: "varix_count",  label: "Varices / whorl",         min: 0.0,  max: 6.0,    step: 1.0,  default: 0.0,  integer: true  },
+    ParamRange { key: "varix_amp",    label: "Varix prominence",        min: 0.0,  max: 0.5,    step: 0.01, default: 0.0,  integer: false },
+    // --- randomness ---
+    ParamRange { key: "seed",         label: "Seed",                    min: 0.0,  max: 9999.0, step: 1.0,  default: 0.0,  integer: true  },
+    ParamRange { key: "jitter",       label: "Jitter",                  min: 0.0,  max: 1.0,    step: 0.01, default: 0.0,  integer: false },
+];
+
+impl ShellParams {
+    /// Clamp every user-facing field to its `PARAM_RANGES` bound, rounding the
+    /// integer-valued fields. `seg_theta`/`seg_phi` are left untouched (internal,
+    /// auto-derived). After this, every shape field is guaranteed in range.
+    pub fn clamp_in_place(&mut self) {
+        fn fix(v: f32, r: &ParamRange) -> f32 {
+            let c = v.clamp(r.min, r.max);
+            if r.integer {
+                c.round()
+            } else {
+                c
+            }
+        }
+        // Panics only if PARAM_RANGES is missing a key — caught by the unit test
+        // `param_table_covers_every_field`, so it can never reach production.
+        let g = |k| PARAM_RANGES.iter().find(|r| r.key == k).expect("missing PARAM_RANGES key");
+        self.w = fix(self.w, g("w"));
+        self.d = fix(self.d, g("d"));
+        self.t = fix(self.t, g("t"));
+        self.n = fix(self.n, g("n"));
+        self.aspect = fix(self.aspect, g("aspect"));
+        self.rib_ax_count = fix(self.rib_ax_count, g("rib_ax_count"));
+        self.rib_ax_amp = fix(self.rib_ax_amp, g("rib_ax_amp"));
+        self.rib_sp_count = fix(self.rib_sp_count, g("rib_sp_count"));
+        self.rib_sp_amp = fix(self.rib_sp_amp, g("rib_sp_amp"));
+        self.rib_sharp = fix(self.rib_sharp, g("rib_sharp"));
+        self.proj_count = fix(self.proj_count, g("proj_count"));
+        self.proj_rows = fix(self.proj_rows, g("proj_rows"));
+        self.proj_pos = fix(self.proj_pos, g("proj_pos"));
+        self.proj_size = fix(self.proj_size, g("proj_size"));
+        self.proj_sharp = fix(self.proj_sharp, g("proj_sharp"));
+        self.varix_count = fix(self.varix_count, g("varix_count"));
+        self.varix_amp = fix(self.varix_amp, g("varix_amp"));
+        self.seed = fix(self.seed, g("seed"));
+        self.jitter = fix(self.jitter, g("jitter"));
+    }
+
+    /// A clamped copy — see [`ShellParams::clamp_in_place`].
+    pub fn clamped(&self) -> ShellParams {
+        let mut p = self.clone();
+        p.clamp_in_place();
+        p
+    }
+}
+
 /// A triangle mesh as flat buffers, ready to hand to a GPU / Three.js.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Mesh {
@@ -194,10 +296,15 @@ fn noise1(seed: u32, x: f32) -> f32 {
 /// The aperture and its distance from the axis both scale by `g = W^(theta/2π)`,
 /// which keeps the form self-similar (why shells are logarithmic spirals).
 pub fn generate(p: &ShellParams) -> Mesh {
-    let n = p.n.max(0.01);
-    let d = p.d.clamp(0.0, 0.95);
-    let aspect = p.aspect.max(0.05);
-    let w = p.w.max(1.0001);
+    // Single, total clamp: every shape field is now guaranteed within its
+    // `PARAM_RANGES` bound, so the rest of the function (and the tessellation /
+    // mesh math below) never sees an out-of-range value.
+    let p = p.clamped();
+    let p = &p;
+    let n = p.n;
+    let d = p.d;
+    let aspect = p.aspect;
+    let w = p.w;
 
     // Feature profile exponents — also drive how narrow each feature is.
     const VARIX_POWER: f32 = 3.0; // rounded raised ridges
@@ -459,6 +566,92 @@ pub fn generate(p: &ShellParams) -> Mesh {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn param_table_covers_every_field() {
+        // 19 user-facing shape params, unique keys, defaults inside their range.
+        assert_eq!(PARAM_RANGES.len(), 19);
+        let mut keys: Vec<_> = PARAM_RANGES.iter().map(|r| r.key).collect();
+        keys.sort_unstable();
+        keys.dedup();
+        assert_eq!(keys.len(), 19, "duplicate or missing PARAM_RANGES key");
+        for r in PARAM_RANGES {
+            assert!(r.min <= r.max, "{}: min > max", r.key);
+            assert!(r.step > 0.0, "{}: non-positive step", r.key);
+            assert!(
+                r.default >= r.min && r.default <= r.max,
+                "{}: default out of range",
+                r.key
+            );
+            if r.integer {
+                assert_eq!(r.default.fract(), 0.0, "{}: integer default not whole", r.key);
+            }
+        }
+        // The `Default` impl must agree with the table's defaults.
+        let d = ShellParams::default();
+        let by = |k| PARAM_RANGES.iter().find(|r| r.key == k).unwrap().default;
+        assert_eq!(d.w, by("w"));
+        assert_eq!(d.d, by("d"));
+        assert_eq!(d.t, by("t"));
+        assert_eq!(d.n, by("n"));
+        assert_eq!(d.aspect, by("aspect"));
+    }
+
+    #[test]
+    fn clamp_pins_out_of_range_and_rounds_integers() {
+        let p = ShellParams {
+            w: 100.0,        // above max 8.0
+            d: 5.0,          // above max 0.95
+            t: -3.0,         // below min 0.0
+            n: 999.0,        // above max 20.0
+            aspect: 0.01,    // below min 0.3
+            proj_count: -7.0, // below min, integer
+            varix_count: 4.7, // integer rounding
+            jitter: 2.0,     // above max 1.0
+            ..ShellParams::default()
+        }
+        .clamped();
+        assert_eq!(p.w, 8.0);
+        assert_eq!(p.d, 0.95);
+        assert_eq!(p.t, 0.0);
+        assert_eq!(p.n, 20.0);
+        assert_eq!(p.aspect, 0.3);
+        assert_eq!(p.proj_count, 0.0);
+        assert_eq!(p.varix_count, 5.0); // 4.7 rounds to nearest int
+        assert_eq!(p.jitter, 1.0);
+        // every field lands within its declared range
+        for r in PARAM_RANGES {
+            let v = match r.key {
+                "w" => p.w, "d" => p.d, "t" => p.t, "n" => p.n, "aspect" => p.aspect,
+                "rib_ax_count" => p.rib_ax_count, "rib_ax_amp" => p.rib_ax_amp,
+                "rib_sp_count" => p.rib_sp_count, "rib_sp_amp" => p.rib_sp_amp,
+                "rib_sharp" => p.rib_sharp, "proj_count" => p.proj_count,
+                "proj_rows" => p.proj_rows, "proj_pos" => p.proj_pos,
+                "proj_size" => p.proj_size, "proj_sharp" => p.proj_sharp,
+                "varix_count" => p.varix_count, "varix_amp" => p.varix_amp,
+                "seed" => p.seed, "jitter" => p.jitter,
+                other => panic!("untested key {other}"),
+            };
+            assert!(v >= r.min && v <= r.max, "{} out of range after clamp: {v}", r.key);
+        }
+    }
+
+    #[test]
+    fn generate_is_safe_for_wild_input() {
+        // Garbage in → a finite, well-formed mesh out (clamp guards the math).
+        let wild = ShellParams {
+            w: 1e6,
+            d: 12.0,
+            n: 5000.0,
+            proj_count: 1e4,
+            rib_sp_count: 1e4,
+            varix_count: -50.0,
+            ..ShellParams::default()
+        };
+        let m = generate(&wild);
+        assert!(!m.positions.is_empty());
+        assert!(m.positions.iter().all(|x| x.is_finite()));
+    }
 
     #[test]
     fn mesh_is_wellformed() {

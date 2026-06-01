@@ -177,16 +177,43 @@
 
       const viewer = document.getElementById("viewer");
       const form = document.getElementById("controls");
-      const FIELDS = [
+      // FIELDS / INTS are populated from the Rust range table in initRanges();
+      // these initial values are a fallback if the wasm load fails. They (and
+      // the slider min/max/step in the HTML above) are only a fallback — the
+      // single source of truth is PARAM_RANGES in crates/shell-core.
+      let FIELDS = [
         "w", "d", "t", "n", "aspect",
         "rib_ax_count", "rib_ax_amp", "rib_sp_count", "rib_sp_amp", "rib_sharp",
         "proj_count", "proj_rows", "proj_pos", "proj_size", "proj_sharp",
         "varix_count", "varix_amp",
         "seed", "jitter",
       ];
-      const INTS = new Set([
+      let INTS = new Set([
         "rib_ax_count", "rib_sp_count", "proj_count", "proj_rows", "varix_count", "seed",
       ]);
+
+      // Pull the authoritative ranges from Rust (via wasm) and apply them to the
+      // sliders, so min/max/step/default and integer formatting all come from
+      // one place. Falls back silently to the HTML-defined attributes on error.
+      async function initRanges() {
+        let ranges;
+        try {
+          ranges = await viewer.paramRanges();
+        } catch (e) {
+          console.warn("param_ranges() unavailable; using HTML fallback ranges", e);
+          return;
+        }
+        FIELDS = ranges.map((r) => r.key);
+        INTS = new Set(ranges.filter((r) => r.integer).map((r) => r.key));
+        for (const r of ranges) {
+          const el = form.elements[r.key];
+          if (!el) continue; // material fields aren't shape params
+          el.min = r.min;
+          el.max = r.max;
+          el.step = Number(r.step.toPrecision(4)); // avoid f32 round-trip noise
+          el.value = r.default;
+        }
+      }
 
       const readForm = () =>
         Object.fromEntries(FIELDS.map((f) => [f, parseFloat(form.elements[f].value)]));
@@ -293,8 +320,11 @@
       });
       document.getElementById("savepng").addEventListener("click", () => viewer.saveImage("shell.png"));
 
-      update(); // push initial geometry values
-      updateMaterial(); // push initial material values
+      // Configure sliders from Rust first, then push the initial values.
+      initRanges().then(() => {
+        update(); // push initial geometry values (sliders now Rust-configured)
+        updateMaterial(); // push initial material values
+      });
     </script>
   </body>
 </html>
