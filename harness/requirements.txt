@@ -1,0 +1,6 @@
+# Python deps for the shell-shape comparison harness (render_catalog.py).
+#   cd harness && python3 -m venv .venv && . .venv/bin/activate
+#   pip install -r requirements.txt
+# Also requires Node.js on PATH (extract_mesh.mjs calls the existing web/pkg wasm).
+pyvista>=0.43     # offscreen VTK rendering of the generated mesh to PNG
+numpy>=1.24

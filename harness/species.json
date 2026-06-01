@@ -1,0 +1,388 @@
+[
+  {
+    "slug": "nautilus-pompilius",
+    "scientific": "Nautilus pompilius",
+    "common": "Chambered nautilus",
+    "family": "Nautilidae",
+    "params": {
+      "w": 3.0,
+      "d": 0.1,
+      "t": 0.0,
+      "n": 4.0,
+      "aspect": 1.0
+    },
+    "coverage": "good",
+    "notes": "Canonical planispiral (T=0), circular tube. Core case for the model.",
+    "reference": "reference/nautilus-pompilius.jpg",
+    "reference_source": "https://upload.wikimedia.org/wikipedia/commons/4/4a/Nautilus_pompilius_%28detail%29.jpg",
+    "reference_page": "https://en.wikipedia.org/wiki/Chambered_nautilus"
+  },
+  {
+    "slug": "planorbis-planorbis",
+    "scientific": "Planorbis planorbis",
+    "common": "Ramshorn snail",
+    "family": "Planorbidae",
+    "params": {
+      "w": 1.8,
+      "d": 0.25,
+      "t": 0.0,
+      "n": 4.0,
+      "aspect": 0.9
+    },
+    "coverage": "good",
+    "notes": "Flat freshwater planispiral; tight low-W coil.",
+    "reference": "reference/planorbis-planorbis.jpg",
+    "reference_source": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/98/Planorbis_planorbis_24.jpg/3840px-Planorbis_planorbis_24.jpg",
+    "reference_page": "https://en.wikipedia.org/wiki/Planorbis_planorbis"
+  },
+  {
+    "slug": "spirula-spirula",
+    "scientific": "Spirula spirula",
+    "common": "Ram's horn squid shell",
+    "family": "Spirulidae",
+    "params": {
+      "w": 1.8,
+      "d": 0.7,
+      "t": 0.0,
+      "n": 4.0,
+      "aspect": 1.0
+    },
+    "coverage": "good",
+    "notes": "Open planispiral \u2014 whorls do not touch (high D). Internal cephalopod shell.",
+    "reference": "reference/spirula-spirula.jpg",
+    "reference_source": "https://upload.wikimedia.org/wikipedia/commons/0/00/Spirula_spirula1.jpg",
+    "reference_page": "https://en.wikipedia.org/wiki/Spirula"
+  },
+  {
+    "slug": "architectonica-perspectiva",
+    "scientific": "Architectonica perspectiva",
+    "common": "Clear sundial",
+    "family": "Architectonicidae",
+    "params": {
+      "w": 1.6,
+      "d": 0.55,
+      "t": 0.85,
+      "n": 6.0,
+      "aspect": 1.0,
+      "rib_sp_count": 8,
+      "rib_sp_amp": 0.05
+    },
+    "coverage": "good",
+    "notes": "Low conical spire (stepped whorls) over a wide open umbilicus (high D).",
+    "reference": "reference/architectonica-perspectiva.jpg",
+    "reference_source": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8d/Architectonica_perspectiva_S4-01.jpg/3840px-Architectonica_perspectiva_S4-01.jpg",
+    "reference_page": "https://en.wikipedia.org/wiki/Architectonica_perspectiva"
+  },
+  {
+    "slug": "helix-pomatia",
+    "scientific": "Helix pomatia",
+    "common": "Roman / Burgundy snail",
+    "family": "Helicidae",
+    "params": {
+      "w": 2.6,
+      "d": 0.18,
+      "t": 1.2,
+      "n": 4.5,
+      "aspect": 0.7
+    },
+    "coverage": "good",
+    "notes": "Globose body, low spire (height from a tall body whorl, low aspect). LIMIT: a real globose snail's body whorl envelops the spire; this single-tube model can't, so it stays a touch flatter.",
+    "reference": "reference/helix-pomatia.jpg",
+    "reference_source": "https://upload.wikimedia.org/wikipedia/commons/d/db/Helix_pomatia_89a.jpg",
+    "reference_page": "https://en.wikipedia.org/wiki/Helix_pomatia"
+  },
+  {
+    "slug": "cepaea-nemoralis",
+    "scientific": "Cepaea nemoralis",
+    "common": "Grove / banded snail",
+    "family": "Helicidae",
+    "params": {
+      "w": 2.4,
+      "d": 0.15,
+      "t": 1.0,
+      "n": 4.5,
+      "aspect": 0.7
+    },
+    "coverage": "good",
+    "notes": "Depressed-globose (banding needs Layer-3 pigment). Same no-envelopment limit as Helix.",
+    "reference": "reference/cepaea-nemoralis.jpg",
+    "reference_source": "https://upload.wikimedia.org/wikipedia/commons/f/fc/Cepaea_nemoralis_edit.jpg",
+    "reference_page": "https://en.wikipedia.org/wiki/Cepaea_nemoralis"
+  },
+  {
+    "slug": "littorina-littorea",
+    "scientific": "Littorina littorea",
+    "common": "Common periwinkle",
+    "family": "Littorinidae",
+    "params": {
+      "w": 2.0,
+      "d": 0.1,
+      "t": 2.3,
+      "n": 5.5,
+      "aspect": 0.85
+    },
+    "coverage": "good",
+    "notes": "Small turbinate snail \u2014 moderate spire.",
+    "reference": "reference/littorina-littorea.jpg",
+    "reference_source": "https://upload.wikimedia.org/wikipedia/commons/1/1a/Sea_snail%2C_underneath%2C_full_view.jpg",
+    "reference_page": "https://en.wikipedia.org/wiki/Common_periwinkle"
+  },
+  {
+    "slug": "trochus-niloticus",
+    "scientific": "Tectus niloticus",
+    "common": "Commercial top shell",
+    "family": "Trochidae",
+    "params": {
+      "w": 1.6,
+      "d": 0.05,
+      "t": 2.4,
+      "n": 7.0,
+      "aspect": 0.7,
+      "rib_sp_count": 8,
+      "rib_sp_amp": 0.05
+    },
+    "coverage": "good",
+    "notes": "Broad straight-sided cone (height ~ base width). FEATURE: the flat base and sharp peripheral keel need an angulated aperture; the model's rounded body whorl bulges instead.",
+    "reference": "reference/trochus-niloticus.jpg",
+    "reference_source": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c8/Tectus_niloticus_01.JPG/3840px-Tectus_niloticus_01.JPG",
+    "reference_page": "https://en.wikipedia.org/wiki/Rochia_nilotica"
+  },
+  {
+    "slug": "turritella-terebra",
+    "scientific": "Turritella terebra",
+    "common": "Tower screw shell",
+    "family": "Turritellidae",
+    "params": {
+      "w": 1.35,
+      "d": 0.0,
+      "t": 6.0,
+      "n": 13.0,
+      "aspect": 0.6,
+      "rib_sp_count": 14,
+      "rib_sp_amp": 0.05,
+      "rib_sharp": 0.3
+    },
+    "coverage": "good",
+    "notes": "High-spire turret, low W, strong spiral cords.",
+    "reference": "reference/turritella-terebra.jpg",
+    "reference_source": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/ec/Turritella_terebra_terebra_01.JPG/3840px-Turritella_terebra_terebra_01.JPG",
+    "reference_page": "https://en.wikipedia.org/wiki/Turritella_terebra"
+  },
+  {
+    "slug": "cerithium-nodulosum",
+    "scientific": "Cerithium nodulosum",
+    "common": "Giant knobbed cerith",
+    "family": "Cerithiidae",
+    "params": {
+      "w": 1.6,
+      "d": 0.05,
+      "t": 3.5,
+      "n": 9.0,
+      "aspect": 0.7,
+      "proj_count": 12,
+      "proj_rows": 2,
+      "proj_pos": 0.6,
+      "proj_size": 0.14,
+      "proj_sharp": 0.25
+    },
+    "coverage": "good",
+    "notes": "Elongate spire with beaded/nodulose sculpture.",
+    "reference": "reference/cerithium-nodulosum.jpg",
+    "reference_source": "https://upload.wikimedia.org/wikipedia/commons/thumb/f/fe/Cerithium_nodulosum_01.jpg/3840px-Cerithium_nodulosum_01.jpg",
+    "reference_page": "https://en.wikipedia.org/wiki/Cerithium_nodulosum"
+  },
+  {
+    "slug": "cancellaria-reticulata",
+    "scientific": "Cancellaria reticulata",
+    "common": "Common nutmeg",
+    "family": "Cancellariidae",
+    "params": {
+      "w": 1.9,
+      "d": 0.12,
+      "t": 2.8,
+      "n": 6.0,
+      "aspect": 0.8,
+      "rib_ax_count": 14,
+      "rib_ax_amp": 0.07,
+      "rib_sp_count": 11,
+      "rib_sp_amp": 0.05,
+      "rib_sharp": 0.35
+    },
+    "coverage": "good",
+    "notes": "Cancellate lattice from crossing axial ribs and spiral cords.",
+    "reference": "reference/cancellaria-reticulata.jpg",
+    "reference_source": "https://upload.wikimedia.org/wikipedia/commons/thumb/2/2c/Cancellaria_reticulata_01.JPG/3840px-Cancellaria_reticulata_01.JPG",
+    "reference_page": "https://en.wikipedia.org/wiki/Common_nutmeg"
+  },
+  {
+    "slug": "bursa-bufonia",
+    "scientific": "Bursa bufonia",
+    "common": "Toad frog shell",
+    "family": "Bursidae",
+    "params": {
+      "w": 2.0,
+      "d": 0.12,
+      "t": 2.3,
+      "n": 6.0,
+      "aspect": 0.8,
+      "varix_count": 3,
+      "varix_amp": 0.28
+    },
+    "coverage": "good",
+    "notes": "Prominent varices (former lip thickenings) every ~120 degrees.",
+    "reference": "reference/bursa-bufonia.jpg",
+    "reference_source": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d5/Bursa_bufonia_01.jpg/3840px-Bursa_bufonia_01.jpg",
+    "reference_page": "https://en.wikipedia.org/wiki/Bursa_bufonia"
+  },
+  {
+    "slug": "murex-pecten",
+    "scientific": "Murex pecten",
+    "common": "Venus comb murex",
+    "family": "Muricidae",
+    "params": {
+      "w": 1.7,
+      "d": 0.1,
+      "t": 3.0,
+      "n": 8.0,
+      "aspect": 0.65,
+      "proj_count": 12,
+      "proj_rows": 1,
+      "proj_pos": 1.0,
+      "proj_size": 0.6,
+      "proj_sharp": 0.85
+    },
+    "coverage": "blocked",
+    "notes": "BLOCKED for the Venus comb specifically: its flat single comb of long spines along a long straight siphonal canal can't be made. The model only does radial spiral spines (which suit a FRONDOSE murex e.g. Hexaplex/Chicoreus far better).",
+    "reference": "reference/murex-pecten.jpg",
+    "reference_source": "https://upload.wikimedia.org/wikipedia/commons/f/f9/Fishbone_Murex_Shell_%2810_cm%29_%28234941311%29.jpg",
+    "reference_page": "https://en.wikipedia.org/wiki/Venus_comb_murex"
+  },
+  {
+    "slug": "terebra-maculata",
+    "scientific": "Terebra maculata",
+    "common": "Marlin-spike auger",
+    "family": "Terebridae",
+    "params": {
+      "w": 1.4,
+      "d": 0.0,
+      "t": 11.0,
+      "n": 18.0,
+      "aspect": 0.7,
+      "rib_ax_count": 18,
+      "rib_ax_amp": 0.05
+    },
+    "coverage": "silhouette",
+    "notes": "Slender high-spire silhouette is excellent. FEATURE: short siphonal notch; T cap (12) limits the very slimmest augers.",
+    "reference": "reference/terebra-maculata.jpg",
+    "reference_source": "https://upload.wikimedia.org/wikipedia/commons/5/5b/Acus_maculatus.jpg",
+    "reference_page": "https://en.wikipedia.org/wiki/Oxymeris_maculata"
+  },
+  {
+    "slug": "oliva-porphyria",
+    "scientific": "Oliva porphyria",
+    "common": "Tent olive",
+    "family": "Olividae",
+    "params": {
+      "w": 1.9,
+      "d": 0.0,
+      "t": 0.85,
+      "n": 5.5,
+      "aspect": 0.45
+    },
+    "coverage": "silhouette",
+    "notes": "Cylindrical body is close. FEATURE: long narrow aperture, anterior canal and callused suture are missing.",
+    "reference": "reference/oliva-porphyria.jpg",
+    "reference_source": "https://upload.wikimedia.org/wikipedia/commons/c/c5/Olividae_-_Oliva_porphyria.JPG",
+    "reference_page": "https://en.wikipedia.org/wiki/Oliva_porphyria"
+  },
+  {
+    "slug": "syrinx-aruanus",
+    "scientific": "Syrinx aruanus",
+    "common": "Australian trumpet",
+    "family": "Turbinellidae",
+    "params": {
+      "w": 2.2,
+      "d": 0.05,
+      "t": 5.5,
+      "n": 8.0,
+      "aspect": 0.8
+    },
+    "coverage": "silhouette",
+    "notes": "Elongate fusiform spindle (h/w~2). FEATURE: the long open anterior siphonal canal and shouldered/turreted whorls are missing.",
+    "reference": "reference/syrinx-aruanus.jpg",
+    "reference_source": "https://upload.wikimedia.org/wikipedia/commons/c/c4/Syrinx_aruanus_shell.jpg",
+    "reference_page": "https://en.wikipedia.org/wiki/Syrinx_aruanus"
+  },
+  {
+    "slug": "bullata-bullata",
+    "scientific": "Bullata bullata",
+    "common": "Giant marginella",
+    "family": "Marginellidae",
+    "params": {
+      "w": 3.5,
+      "d": 0.0,
+      "t": 0.5,
+      "n": 4.0,
+      "aspect": 0.85
+    },
+    "coverage": "silhouette",
+    "notes": "Bullate ovoid with a low spire is close. FEATURE: long toothed aperture (columellar folds), gloss and callused apex are missing.",
+    "reference": "reference/bullata-bullata.jpg",
+    "reference_source": "https://upload.wikimedia.org/wikipedia/commons/3/30/Bullata_bullata_photograph1.jpg",
+    "reference_page": "https://commons.wikimedia.org/wiki/File:Bullata_bullata_photograph1.jpg"
+  },
+  {
+    "slug": "conus-marmoreus",
+    "scientific": "Conus marmoreus",
+    "common": "Marble cone",
+    "family": "Conidae",
+    "params": {
+      "w": 2.9,
+      "d": 0.05,
+      "t": 1.5,
+      "n": 7.0,
+      "aspect": 0.45
+    },
+    "coverage": "blocked",
+    "notes": "BLOCKED: a cone is widest at the shoulder and tapers to a drawn-out anterior; the symmetric ellipse gives a rounded body instead. FEATURE: siphonal canal + asymmetric/non-elliptical aperture.",
+    "reference": "reference/conus-marmoreus.jpg",
+    "reference_source": "https://upload.wikimedia.org/wikipedia/commons/4/4e/Conus_marmoreus_feeding_on_cowrie.jpg",
+    "reference_page": "https://en.wikipedia.org/wiki/Conus_marmoreus"
+  },
+  {
+    "slug": "cypraea-tigris",
+    "scientific": "Cypraea tigris",
+    "common": "Tiger cowrie",
+    "family": "Cypraeidae",
+    "params": {
+      "w": 3.0,
+      "d": 0.0,
+      "t": 0.4,
+      "n": 5.0,
+      "aspect": 1.3
+    },
+    "coverage": "blocked",
+    "notes": "BLOCKED: cowries are involute (body whorl wraps over the spire) with a long toothed slit aperture and high gloss. FEATURE: involute envelopment + toothed aperture + gloss.",
+    "reference": "reference/cypraea-tigris.jpg",
+    "reference_source": "https://upload.wikimedia.org/wikipedia/commons/e/ea/Cypraea_tigris_%28Tiger_cowrie%29.jpg",
+    "reference_page": "https://en.wikipedia.org/wiki/Cypraea_tigris"
+  },
+  {
+    "slug": "lambis-lambis",
+    "scientific": "Lambis lambis",
+    "common": "Common spider conch",
+    "family": "Strombidae",
+    "params": {
+      "w": 2.0,
+      "d": 0.1,
+      "t": 1.5,
+      "n": 7.0,
+      "aspect": 0.9
+    },
+    "coverage": "blocked",
+    "notes": "BLOCKED: the flaring adult lip with long curved digitations cannot be expressed by a self-similar swept tube. FEATURE: flaring/expanded final aperture + lip processes.",
+    "reference": "reference/lambis-lambis.jpg",
+    "reference_source": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3a/Lambis_lambis_01.JPG/3840px-Lambis_lambis_01.JPG",
+    "reference_page": "https://en.wikipedia.org/wiki/Lambis_lambis"
+  }
+]

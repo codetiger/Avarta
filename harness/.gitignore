@@ -1,0 +1,13 @@
+# Python env + caches
+.venv/
+__pycache__/
+*.pyc
+
+# Generated artifacts (.gitignore has no inline comments — keep these on own lines)
+rendered/
+meshes/
+report.html
+
+# Downloaded reference photos (~30 MB). Reproduce with: python fetch_references.py
+# (source URLs are recorded in species.json). Un-ignore if you want them committed.
+reference/
