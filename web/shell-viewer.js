@@ -5,7 +5,7 @@
 // "Render" mode) is imported lazily so it's code-split out of the initial load.
 
 import * as THREE from "three";
-import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { TrackballControls } from "three/addons/controls/TrackballControls.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
@@ -135,10 +135,11 @@ class ShellViewer extends HTMLElement {
         this.pathTracer.renderScale = 0.75; // accumulate a touch faster
         this.pathTracer.tiles.set(2, 2);
       }
-      // The tracer needs a raw equirect env, not the PMREM map; show it as a
-      // soft studio backdrop so translucent shells read against something.
+      // Light the tracer with the *same* RoomEnvironment as the live raster (the
+      // tracer auto-converts the cube map to an equirect) so the two modes match;
+      // show a soft gradient only as a backdrop, not as a light.
       this.scene.environment = this._ensureHQEnv();
-      this.scene.background = this.envHQ;
+      this.scene.background = this._ensureHQBg();
       this._mode = "hq";
       this._applyMaterial(); // drops clearcoat for the tracer
       this.controls.update();
@@ -159,16 +160,41 @@ class ShellViewer extends HTMLElement {
     this._applyMaterial(); // restore clearcoat for live
   }
 
-  /** Build (once) a procedural gradient-sky equirect env for the path tracer. */
+  /**
+   * Render the *same* RoomEnvironment the live raster uses into a cube map, so
+   * the path tracer is lit by an identical IBL (it auto-converts a CubeTexture to
+   * an equirect internally). This is what makes the HQ render match the live
+   * viewport — previously HQ was lit by a separate, mostly-dark gradient, so the
+   * directional key left the opposite side in shadow. Built once.
+   */
   _ensureHQEnv() {
-    if (!this.envHQ) {
-      const tex = new this._ptLib.GradientEquirectTexture();
-      tex.topColor.set(0xdfe7ef); // bright sky
-      tex.bottomColor.set(0x352f28); // warm dim ground
-      tex.update();
-      this.envHQ = tex;
-    }
+    if (this.envHQ) return this.envHQ;
+    const cubeRT = new THREE.WebGLCubeRenderTarget(256, { type: THREE.HalfFloatType });
+    const cubeCam = new THREE.CubeCamera(0.1, 100, cubeRT);
+    const room = new RoomEnvironment();
+    const prevTone = this.renderer.toneMapping;
+    this.renderer.toneMapping = THREE.NoToneMapping; // capture linear HDR radiance
+    cubeCam.update(this.renderer, room);
+    this.renderer.toneMapping = prevTone;
+    room.dispose?.();
+    this.envHQ = cubeRT.texture; // isCubeTexture === true → tracer matches live IBL
     return this.envHQ;
+  }
+
+  /**
+   * A soft gradient backdrop for the path-traced still — purely visual (so
+   * translucent shells read against something); the lighting comes from
+   * `_ensureHQEnv`, not this. Needs the lazily-loaded path-tracer lib.
+   */
+  _ensureHQBg() {
+    if (!this.envHQBg) {
+      const tex = new this._ptLib.GradientEquirectTexture();
+      tex.topColor.set(0xb8bfc7); // soft neutral studio sky
+      tex.bottomColor.set(0x2c2f34); // dim neutral floor
+      tex.update();
+      this.envHQBg = tex;
+    }
+    return this.envHQBg;
   }
 
   /** Rebuild the path-trace scene + restart accumulation (after any change). */
@@ -212,10 +238,19 @@ class ShellViewer extends HTMLElement {
     this.envHQ = null;
 
     this.camera = new THREE.PerspectiveCamera(40, w / h, 0.01, 100);
-    this.camera.position.set(2.4, 1.5, 3.0);
+    this.camera.position.set(0.7, 1.0, 3.2); // reframed on first build
 
-    this.controls = new OrbitControls(this.camera, this.renderer.domElement);
-    this.controls.enableDamping = true;
+    // TrackballControls: quaternion-style free rotation — no fixed up-axis, so no
+    // gimbal lock when orbiting over the poles (OrbitControls locks there, which
+    // is exactly where you want to look down the spire axis).
+    this.controls = new TrackballControls(this.camera, this.renderer.domElement);
+    this.controls.rotateSpeed = 3.5;
+    this.controls.zoomSpeed = 1.2;
+    this.controls.panSpeed = 0.8;
+    this.controls.staticMoving = false; // smooth, damped
+    this.controls.dynamicDampingFactor = 0.12;
+    this.controls.minDistance = 0.5;
+    this.controls.maxDistance = 40;
     // Moving the camera resets the path-trace accumulation.
     this.controls.addEventListener("change", () => {
       if (this._mode === "hq" && this.pathTracer) this.pathTracer.updateCamera();
@@ -310,15 +345,42 @@ class ShellViewer extends HTMLElement {
     geo.setIndex(new THREE.BufferAttribute(indices, 1));
     geo.computeTangents(); // needs uv + normal; enables normal/detail maps
     geo.computeBoundingSphere();
-    // Geometry is already unit-normalised + centred in Rust, so no mesh transform
-    // is needed — and the BVH/path tracer get small, precision-friendly coords.
+    // Geometry is already unit-normalised, centred and oriented (spire vertical,
+    // cone down, aperture facing +Z) in Rust, so no mesh transform is needed — and
+    // the BVH/path tracer get small, precision-friendly coords.
 
-    if (!this._framed) {
-      this.controls.target.set(0, 0, 0);
-      this.camera.position.set(2.4, 1.5, 3.0);
-      this.camera.updateProjectionMatrix();
-      this._framed = true;
+    // Fit the camera to the bounding sphere. The first build uses the canonical
+    // front-and-slightly-above pose; later rebuilds keep the user's orbit
+    // direction and just re-fit distance/target (so presets stay centred without
+    // snapping the view back).
+    this._frameObject(!this._framed);
+    this._framed = true;
+  }
+
+  /** Frame the camera to the mesh's bounding sphere. */
+  _frameObject(useDefaultDir) {
+    const bs = this.mesh.geometry.boundingSphere;
+    if (!bs) return;
+    const c = bs.center;
+    const r = bs.radius || 1;
+    const fov = (this.camera.fov * Math.PI) / 180;
+    const dist = (r / Math.sin(fov / 2)) * 1.12;
+
+    let dir;
+    if (useDefaultDir) {
+      dir = new THREE.Vector3(0.22, 0.32, 1.0).normalize(); // front, a touch above
+    } else {
+      dir = this.camera.position.clone().sub(this.controls.target);
+      if (dir.lengthSq() < 1e-9) dir.set(0.22, 0.32, 1.0);
+      dir.normalize();
     }
+
+    this.controls.target.copy(c);
+    this.camera.position.copy(c).addScaledVector(dir, dist);
+    this.camera.near = Math.max(dist - r * 2, 0.01);
+    this.camera.far = dist + r * 4;
+    this.camera.updateProjectionMatrix();
+    this.controls.update();
   }
 
   _onResize() {
@@ -329,6 +391,7 @@ class ShellViewer extends HTMLElement {
     this.composer.setSize(w, h);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
+    this.controls.handleResize(); // TrackballControls caches the element rect
     this._resetHQ();
   }
 

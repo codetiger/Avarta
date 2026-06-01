@@ -412,6 +412,42 @@ pub fn generate(p: &ShellParams) -> Mesh {
         v[2] = (v[2] - cz) * scale;
     }
 
+    // --- Orient for display ---------------------------------------------------
+    // The coil is built around +Z with the apex (smallest whorl) at the low-z end
+    // and the body whorl / aperture at the high-z end. For viewing we want a
+    // canonical pose: the coil axis vertical with the cone pointing *down*, and
+    // the body whorl turned to face the camera (+Z). Two rotations about the now-
+    // centred origin do it — rotations preserve the unit normalisation above and
+    // keep the (already unit) normals valid.
+    //
+    // 1) Spin about the coil axis (Z) so the body whorl's azimuth points to
+    //    (0,-1); 2) tip upright with Rx(-90°): (x,y,z) -> (x, z, -y), which sends
+    //    +Z (coil axis) -> +Y (up), the low-z apex -> -Y (bottom), and the body
+    //    whorl -> +Z (front).
+    let last = (theta_verts - 1) * cols;
+    let (mut ax, mut ay) = (0.0f32, 0.0f32);
+    for c in 0..cols {
+        let b = (last + c) * 3;
+        ax += positions[b];
+        ay += positions[b + 1];
+    }
+    ax /= cols as f32;
+    ay /= cols as f32;
+    let rho = -0.5 * PI - ay.atan2(ax);
+    let (sr, cr) = rho.sin_cos();
+    let orient = |p: &mut [f32]| {
+        let (x, y, z) = (p[0], p[1], p[2]);
+        p[0] = x * cr - y * sr; // x' = Rz(rho)·x
+        p[1] = z; //               y' = z   (coil axis -> up)
+        p[2] = -(x * sr + y * cr); // z' = -y'
+    };
+    for v in positions.chunks_exact_mut(3) {
+        orient(v);
+    }
+    for nrm in normals.chunks_exact_mut(3) {
+        orient(nrm);
+    }
+
     Mesh {
         positions,
         normals,
@@ -587,15 +623,17 @@ mod tests {
 
     #[test]
     fn planispiral_centres_lie_in_a_plane() {
-        // T = 0 → centre height is 0; surface z only from the aperture (±g).
+        // T = 0 → centre height is 0; the coil is flat. After the display
+        // orientation the coil axis is the world Y, so a planispiral stays flat in
+        // Y: max |y| is bounded by the largest aperture half-height (the only
+        // out-of-plane extent), times the unit-normalisation scale (≤ 1).
         let p = ShellParams {
             t: 0.0,
             ..ShellParams::default()
         };
         let m = generate(&p);
-        // Max |z| should stay bounded by the largest aperture half-height.
         let g_max = p.w.powf(p.n);
-        let max_z = m.positions.iter().skip(2).step_by(3).fold(0.0f32, |a, &z| a.max(z.abs()));
-        assert!(max_z <= g_max * 1.01, "planispiral too tall: {max_z} vs {g_max}");
+        let max_y = m.positions.iter().skip(1).step_by(3).fold(0.0f32, |a, &y| a.max(y.abs()));
+        assert!(max_y <= g_max * 1.01, "planispiral too tall: {max_y} vs {g_max}");
     }
 }
