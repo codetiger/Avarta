@@ -6,10 +6,12 @@
 // Usage:  node extract_mesh.mjs '<params-json>'      (params on argv), or
 //         echo '<params-json>' | node extract_mesh.mjs
 //
-// Output (stdout, binary): a little-endian header of four uint32 element counts
-//   [nPositions, nNormals, nUvs, nIndices]
-// followed by positions(f32), normals(f32), uvs(f32), indices(u32) back to back.
-// Python reads this with numpy.frombuffer — no big JSON to parse.
+// Output (stdout, binary): a little-endian header of seven uint32 values
+//   [nPositions, nNormals, nUvs, nIndices, nPigment, pigW, pigH]
+// followed by positions(f32), normals(f32), uvs(f32), indices(u32), pigment(u8)
+// back to back. The pigment field is the Layer-3 reaction–diffusion texture
+// (pigW×pigH, one byte/texel) — Python maps it through a palette and applies it
+// via the uvs. Python reads this with numpy.frombuffer — no big JSON to parse.
 
 import { readFileSync } from "node:fs";
 import { initSync, generate } from "../web/pkg/shell_wasm.js";
@@ -29,6 +31,9 @@ const positions = mesh.positions; // Float32Array (fresh copies)
 const normals = mesh.normals;
 const uvs = mesh.uvs;
 const indices = mesh.indices; // Uint32Array
+const pigment = mesh.pigment; // Uint8Array (Layer-3 RD field, pigW×pigH)
+const pigW = mesh.pig_w;
+const pigH = mesh.pig_h;
 mesh.free();
 
 const header = new Uint32Array([
@@ -36,6 +41,9 @@ const header = new Uint32Array([
   normals.length,
   uvs.length,
   indices.length,
+  pigment.length,
+  pigW,
+  pigH,
 ]);
 
 function writeBuf(typedArray) {
@@ -48,3 +56,4 @@ writeBuf(positions);
 writeBuf(normals);
 writeBuf(uvs);
 writeBuf(indices);
+writeBuf(pigment);

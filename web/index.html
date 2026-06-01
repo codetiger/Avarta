@@ -27,22 +27,25 @@
       }
       header.titlebar h1 { margin: 0; }
       header.titlebar .sub { margin: 0; }
+      /* Both side columns stack two scrollable panes (top/bottom half). */
       aside {
-        padding: 20px;
         border-right: 1px solid #20262e;
-        overflow-y: auto;
+        overflow: hidden; display: flex; flex-direction: column;
       }
+      /* Left column: shape controls (top) + pigmentation (bottom). */
+      aside.left .pane { padding: 0 20px 16px; overflow-y: auto; }
+      .shape-pane { flex: 1 1 58%; }
+      .pigment-pane { flex: 1 1 42%; border-top: 1px solid #20262e; }
       /* Right column: species browser (top) + appearance controls (bottom). */
       aside.right {
-        padding: 0; border-right: none; border-left: 1px solid #20262e;
-        overflow: hidden; display: flex; flex-direction: column;
+        border-right: none; border-left: 1px solid #20262e;
       }
       aside.right .pane { padding: 0 12px 14px; overflow-y: auto; }
       .species-pane { flex: 1 1 54%; }
       .appearance-pane { flex: 1 1 46%; border-top: 1px solid #20262e; }
       /* Sticky pane title: pins to the top of its own scroll area (opaque bg so the
-         list slides underneath). Top padding lives on the heading so it sits flush. */
-      aside.right h2 {
+         content slides underneath). Top padding lives on the heading so it sits flush. */
+      aside h2 {
         font-size: 11px; text-transform: uppercase; letter-spacing: .08em;
         color: #c8a35a; margin: 0 0 12px;
         position: sticky; top: 0; z-index: 1;
@@ -76,19 +79,14 @@
       .mode-btn:hover { color: #d8dee9; border-color: #3a434f; }
       .mode-btn.active { color: #e7d8b6; border-color: #c8a35a; background: #1a212b; }
       .mode-btn svg { display: block; }
-      .swatches { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; }
-      .swatch-btn {
-        width: 22px; height: 22px; padding: 0; border-radius: 50%;
-        border: 2px solid #2a313b; cursor: pointer;
-      }
-      .swatch-btn:hover { border-color: #6b7686; }
-      .swatch-btn.active { border-color: #c8a35a; box-shadow: 0 0 0 2px rgba(200,163,90,.3); }
-      input[type="color"].swatch-custom {
-        width: 24px; height: 24px; padding: 0; cursor: pointer;
-        background: none; border: 1px dashed #6b7686; border-radius: 6px;
-      }
-      input[type="color"].swatch-custom::-webkit-color-swatch-wrapper { padding: 1px; }
-      input[type="color"].swatch-custom::-webkit-color-swatch { border: none; border-radius: 4px; }
+      /* Layer-4 pigment palette: three labelled colour wells. */
+      .palette { display: flex; gap: 8px; margin-top: 4px; }
+      .palette label { flex: 1; display: flex; flex-direction: column; gap: 4px;
+        margin: 0; font-size: 11px; color: #8b97a8; text-align: center; }
+      .palette input[type="color"] { width: 100%; height: 26px; padding: 0; cursor: pointer;
+        background: none; border: 1px solid #2a313b; border-radius: 6px; }
+      .palette input[type="color"]::-webkit-color-swatch-wrapper { padding: 2px; }
+      .palette input[type="color"]::-webkit-color-swatch { border: none; border-radius: 4px; }
       h1 { font-size: 16px; margin: 0 0 4px; letter-spacing: .02em; }
       p.sub { margin: 0 0 20px; color: #8b97a8; font-size: 12px; }
       label { display: block; margin: 14px 0 4px; font-size: 12px; color: #aeb9c9; }
@@ -141,8 +139,6 @@
       .dice { margin-top: 10px; width: 100%; padding: 8px; cursor: pointer;
         background: #161b22; color: #d8dee9; border: 1px solid #2a313b; border-radius: 6px; }
       .dice:hover { border-color: #c8a35a; color: #e7d8b6; }
-      .swatch { flex: 1; height: 26px; padding: 0; cursor: pointer;
-        background: #161b22; border: 1px solid #2a313b; border-radius: 6px; }
       .rstatus { margin-top: 8px; font-size: 11px; color: #8b97a8; min-height: 14px; }
       footer { margin-top: 22px; font-size: 11px; color: #6b7686; }
       code { color: #c8a35a; }
@@ -154,12 +150,19 @@
       <p class="sub">Logarithmic helico-spiral shell generator (Rust → WASM).</p>
     </header>
 
-    <aside>
-      <!-- All controls are generated from the config below in buildControls();
-           slider ranges come from the Rust param_ranges() table. -->
-      <form id="controls"></form>
-
-      <footer>Drag to orbit · scroll to zoom.</footer>
+    <aside class="left">
+      <!-- Top half: shape controls, generated in buildControls() from the Rust
+           param_ranges() table. Bottom half: pigmentation, built in
+           buildPigmentation() from pigment_ranges(). -->
+      <section class="pane shape-pane">
+        <h2>Shape</h2>
+        <form id="controls"></form>
+        <footer>Drag to orbit · scroll to zoom.</footer>
+      </section>
+      <section class="pane pigment-pane">
+        <h2>Pigmentation</h2>
+        <div id="pigmentation"></div>
+      </section>
     </aside>
 
     <shell-viewer id="viewer"></shell-viewer>
@@ -181,6 +184,7 @@
       const viewer = document.getElementById("viewer");
       const form = document.getElementById("controls");
       const appearance = document.getElementById("appearance");
+      const pigmentation = document.getElementById("pigmentation");
 
       // ---- Friendly labels -------------------------------------------------
       // Plain-language label + a hover hint that keeps the scientific term
@@ -233,7 +237,6 @@
         { key: "iridescence",  label: "Iridescence",  hint: "Thin-film colour shift (nacre / pearl)", min: 0, max: 1, step: 0.01, value: 0 },
       ];
       const MAT_RANGES = MATERIAL.map((m) => m.key);
-      const DEFAULT_COLOR = "#e7d8b6";
 
       // Display modes as small icon buttons (filled sphere / wire globe / both).
       const ICON = {
@@ -246,11 +249,37 @@
         { mode: "wireframe", label: "Wireframe" },
         { mode: "solid+wireframe", label: "Solid + wireframe" },
       ];
-      // A palette of natural shell colours, plus a custom picker.
-      const SWATCHES = [
-        "#e7d8b6", "#f4ede1", "#dcb98f", "#c98a5e", "#a9744f",
-        "#7c5230", "#e3b079", "#d7dcdb", "#b7c3bd", "#e8b6a4",
+      // Layer-3 pigmentation pattern regimes (index → label), matching PigRegime
+      // in crates/shell-core. A reaction–diffusion engine generates the pattern
+      // as the shell grows — there is no manual colour picking any more.
+      const REGIMES = [
+        "Solid", "Spiral bands", "Axial stripes", "Oblique lines",
+        "Chevrons / tented", "Spots", "Reticulated",
       ];
+      // Layer-4 palette: the three colours the pigment field is mapped through
+      // (0 = ground, mid = accent, 1 = pattern). Recolouring is a cheap re-bake.
+      const PALETTE = [
+        { key: "base",    label: "Ground",  value: "#efe3c8" },
+        { key: "accent",  label: "Accent",  value: "#b9793f" },
+        { key: "pattern", label: "Pattern", value: "#6f3d1d" },
+      ];
+      // Initial pigmentation values shown on first load (kept in step with the
+      // viewer's DEFAULTS); pushed to the viewer in the init block below.
+      const DEMO_PIG = {
+        pig_regime: 1, pig_scale: 0.5, pig_contrast: 0.6,
+        pig_density: 0.5, pig_angle: 0.5, pig_irregularity: 0.15,
+      };
+      // Fallback pigment ranges (mirror PIGMENT_RANGES in shell-core), used only
+      // if pigment_ranges() is unavailable. Replaced from Rust in initRanges().
+      const FALLBACK_PIGMENT = [
+        { key: "pig_regime",       label: "Pattern",       min: 0, max: 6, step: 1,    default: 0,   integer: true },
+        { key: "pig_scale",        label: "Feature scale", min: 0, max: 1, step: 0.01, default: 0.5, integer: false },
+        { key: "pig_contrast",     label: "Contrast",      min: 0, max: 1, step: 0.01, default: 0.5, integer: false },
+        { key: "pig_density",      label: "Density",       min: 0, max: 1, step: 0.01, default: 0.5, integer: false },
+        { key: "pig_angle",        label: "Obliqueness",   min: 0, max: 1, step: 0.01, default: 0.0, integer: false },
+        { key: "pig_irregularity", label: "Irregularity",  min: 0, max: 1, step: 0.01, default: 0.0, integer: false },
+      ];
+      let PIGMENT = FALLBACK_PIGMENT; // replaced with the Rust table in initRanges()
 
       // Fallback ranges, used ONLY if param_ranges() is unavailable (offline /
       // wasm load failure) so the panel still renders. The authoritative source
@@ -292,8 +321,29 @@
           <output id="val-${key}"></output></div></label>`;
       }
 
+      // Build the Pigmentation panel (left column, lower half): the pattern-regime
+      // selector, the reaction–diffusion sliders, and the Layer-4 palette.
+      function buildPigmentation() {
+        // Reaction–diffusion sliders, configured from the Rust pigment range
+        // table; the regime is a selector (it changes the RD configuration).
+        const pigSliders = PIGMENT.filter((r) => r.key !== "pig_regime").map((r) =>
+          `<label>${r.label}<div class="row">
+            <input id="pig-${r.key}" type="range" min="${r.min}" max="${r.max}" step="${stepStr(r.step)}" value="${DEMO_PIG[r.key] ?? r.default}" />
+            <output id="val-${r.key}"></output></div></label>`).join("");
+        const regimeSel = `<select id="pig-regime">${REGIMES.map((name, i) =>
+          `<option value="${i}"${i === DEMO_PIG.pig_regime ? " selected" : ""}>${name}</option>`).join("")}</select>`;
+        const paletteRow = `<div class="palette">${PALETTE.map((c) =>
+          `<label>${c.label}<input id="pal-${c.key}" type="color" value="${c.value}" title="${c.label}" /></label>`).join("")}</div>`;
+        pigmentation.innerHTML = `
+          <div class="field-label first">Pattern</div>
+          ${regimeSel}
+          ${pigSliders}
+          <div class="field-label">Palette</div>
+          ${paletteRow}`;
+      }
+
       // Build the Appearance panel (right column, lower half): display-mode icons,
-      // a colour palette + custom picker, the material sliders, and photo render.
+      // the material finish sliders, and photo render.
       function buildAppearance() {
         const sliders = MATERIAL.map((m) =>
           `<label>${m.label}${hintSpan(m.hint)}<div class="row">
@@ -305,12 +355,7 @@
             ${DISPLAY_MODES.map((d, i) =>
               `<button type="button" class="mode-btn${i === 0 ? " active" : ""}" data-mode="${d.mode}" title="${d.label}" aria-label="${d.label}">${ICON[d.mode]}</button>`).join("")}
           </div>
-          <div class="field-label">Base colour</div>
-          <div class="swatches" id="swatches">
-            ${SWATCHES.map((c, i) =>
-              `<button type="button" class="swatch-btn${i === 0 ? " active" : ""}" data-color="${c}" title="${c}" style="background:${c}"></button>`).join("")}
-            <input id="mat-color" type="color" class="swatch-custom" value="${DEFAULT_COLOR}" title="Custom colour" />
-          </div>
+          <div class="subhead">Material finish</div>
           ${sliders}
           <div class="subhead">Photo render</div>
           <button type="button" id="render" class="dice">▶ Render (path trace)</button>
@@ -356,10 +401,9 @@
         timer = setTimeout(() => viewer.setParams(readForm()), 30);
       }
 
-      // Material/appearance controls update the look without regenerating geometry.
-      let matColor = DEFAULT_COLOR;
+      // Material finish updates the look without regenerating geometry.
       function updateMaterial() {
-        const patch = { color: parseInt(matColor.slice(1), 16) };
+        const patch = {};
         for (const f of MAT_RANGES) {
           const el = document.getElementById("mat-" + f);
           if (!el) continue;
@@ -371,19 +415,32 @@
         viewer.setMaterial(patch);
       }
 
-      // Display mode (icon buttons) + base colour (swatches / custom picker).
+      // Pigmentation pattern (regime + reaction–diffusion knobs) → a geometry
+      // rebuild that re-runs the RD sim. The palette is look-only (cheap re-bake).
+      function updatePigment() {
+        const patch = { pig_regime: parseInt(document.getElementById("pig-regime").value, 10) };
+        for (const r of PIGMENT) {
+          if (r.key === "pig_regime") continue;
+          const el = document.getElementById("pig-" + r.key);
+          if (!el) continue;
+          const v = parseFloat(el.value);
+          patch[r.key] = v;
+          const out = document.getElementById("val-" + r.key);
+          if (out) out.textContent = v.toFixed(2);
+        }
+        viewer.setParams(patch);
+      }
+      function updatePalette() {
+        const patch = {};
+        for (const c of PALETTE) patch[c.key] = document.getElementById("pal-" + c.key).value;
+        viewer.setPalette(patch);
+      }
+
+      // Display mode (icon buttons).
       function setMode(mode) {
         for (const b of document.querySelectorAll(".mode-btn"))
           b.classList.toggle("active", b.dataset.mode === mode);
         viewer.setRenderMode(mode);
-      }
-      function setColor(hex) {
-        matColor = hex;
-        for (const b of document.querySelectorAll(".swatch-btn"))
-          b.classList.toggle("active", b.dataset.color.toLowerCase() === hex.toLowerCase());
-        const custom = document.getElementById("mat-color");
-        if (custom) custom.value = hex;
-        updateMaterial();
       }
 
       // ---- Species browser -------------------------------------------------
@@ -392,36 +449,78 @@
       // species the swept-tube model can't form, e.g. cones/cowries/spider conchs,
       // are excluded). Params come straight from harness/species.json. Clicking one
       // loads its shape; thumbnails are rendered from the actual WASM geometry.
+      // Some species also carry a characteristic pigmentation: `pig` (Layer-3 RD
+      // params, see DEMO_PIG/PIGMENT keys) and `palette` (Layer-4 base/accent/
+      // pattern). Species without them fall back to the current defaults.
       const SPECIES = [
         { sci: "Nautilus pompilius", common: "Chambered nautilus",
-          params: { w: 3.0, d: 0.1, t: 0.0, n: 4.0, aspect: 1.0 } },
+          params: { w: 3.0, d: 0.1, t: 0.0, n: 4.0, aspect: 1.0 },
+          // Radial brown "flame" stripes running across the whorl.
+          pig: { pig_regime: 2, pig_scale: 0.45, pig_contrast: 0.7, pig_density: 0.6, pig_angle: 0.0, pig_irregularity: 0.25 },
+          palette: { base: "#f4ead2", accent: "#c8763f", pattern: "#9c3f1e" } },
         { sci: "Planorbis planorbis", common: "Ramshorn snail",
-          params: { w: 1.8, d: 0.25, t: 0.0, n: 4.0, aspect: 0.9 } },
+          params: { w: 1.8, d: 0.25, t: 0.0, n: 4.0, aspect: 0.9 },
+          // Plain horn-brown.
+          pig: { pig_regime: 0 },
+          palette: { base: "#7a5230", accent: "#5e3d22", pattern: "#3f2814" } },
         { sci: "Spirula spirula", common: "Ram's horn squid shell",
-          params: { w: 1.8, d: 0.7, t: 0.0, n: 4.0, aspect: 1.0 } },
+          params: { w: 1.8, d: 0.7, t: 0.0, n: 4.0, aspect: 1.0 },
+          // Chalky white internal shell — no pigment pattern.
+          pig: { pig_regime: 0 },
+          palette: { base: "#f3efe4", accent: "#e4dccb", pattern: "#cdc4ad" } },
         { sci: "Architectonica perspectiva", common: "Clear sundial",
-          params: { w: 1.6, d: 0.55, t: 0.85, n: 6.0, aspect: 1.0, rib_sp_count: 8, rib_sp_amp: 0.05 } },
+          params: { w: 1.6, d: 0.55, t: 0.85, n: 6.0, aspect: 1.0, rib_sp_count: 8, rib_sp_amp: 0.05 },
+          // Concentric spiral rows of brown dashes.
+          pig: { pig_regime: 1, pig_scale: 0.35, pig_contrast: 0.8, pig_density: 0.5, pig_angle: 0.0, pig_irregularity: 0.1 },
+          palette: { base: "#dac49a", accent: "#9a6a38", pattern: "#5a3415" } },
         { sci: "Helix pomatia", common: "Roman / Burgundy snail",
-          params: { w: 2.6, d: 0.18, t: 1.2, n: 4.5, aspect: 0.7 } },
+          params: { w: 2.6, d: 0.18, t: 1.2, n: 4.5, aspect: 0.7 },
+          // Faint, soft spiral colour bands.
+          pig: { pig_regime: 1, pig_scale: 0.6, pig_contrast: 0.35, pig_density: 0.25, pig_angle: 0.0, pig_irregularity: 0.2 },
+          palette: { base: "#d8b98a", accent: "#a87b4e", pattern: "#7a542f" } },
         { sci: "Cepaea nemoralis", common: "Grove / banded snail",
-          params: { w: 2.4, d: 0.15, t: 1.0, n: 4.5, aspect: 0.7 } },
+          params: { w: 2.4, d: 0.15, t: 1.0, n: 4.5, aspect: 0.7 },
+          // The classic dark spiral bands on a yellow ground.
+          pig: { pig_regime: 1, pig_scale: 0.55, pig_contrast: 0.85, pig_density: 0.3, pig_angle: 0.0, pig_irregularity: 0.05 },
+          palette: { base: "#e7c64a", accent: "#9c6b2a", pattern: "#3f2611" } },
         { sci: "Littorina littorea", common: "Common periwinkle",
-          params: { w: 2.0, d: 0.1, t: 2.3, n: 5.5, aspect: 0.85 } },
+          params: { w: 2.0, d: 0.1, t: 2.3, n: 5.5, aspect: 0.85 },
+          // Fine grey-brown spiral lines.
+          pig: { pig_regime: 1, pig_scale: 0.2, pig_contrast: 0.6, pig_density: 0.3, pig_angle: 0.0, pig_irregularity: 0.15 },
+          palette: { base: "#9d8d74", accent: "#5f5142", pattern: "#332b22" } },
         { sci: "Tectus niloticus", common: "Commercial top shell",
-          params: { w: 1.6, d: 0.05, t: 2.4, n: 7.0, aspect: 0.7, rib_sp_count: 8, rib_sp_amp: 0.05 } },
+          params: { w: 1.6, d: 0.05, t: 2.4, n: 7.0, aspect: 0.7, rib_sp_count: 8, rib_sp_amp: 0.05 },
+          // Oblique reddish flame streaks down the spire.
+          pig: { pig_regime: 3, pig_scale: 0.4, pig_contrast: 0.75, pig_density: 0.55, pig_angle: 0.6, pig_irregularity: 0.2 },
+          palette: { base: "#eadfc8", accent: "#b65a3a", pattern: "#7e2f1c" } },
         { sci: "Turritella terebra", common: "Tower screw shell",
           params: { w: 1.35, d: 0.0, t: 6.0, n: 13.0, aspect: 0.6,
-            rib_sp_count: 14, rib_sp_amp: 0.05, rib_sharp: 0.3 } },
+            rib_sp_count: 14, rib_sp_amp: 0.05, rib_sharp: 0.3 },
+          // Fine reddish-brown spiral lines tracking the cords.
+          pig: { pig_regime: 1, pig_scale: 0.18, pig_contrast: 0.65, pig_density: 0.3, pig_angle: 0.0, pig_irregularity: 0.15 },
+          palette: { base: "#cdb38a", accent: "#9a6c40", pattern: "#6a3f20" } },
         { sci: "Cerithium nodulosum", common: "Giant knobbed cerith",
           params: { w: 1.6, d: 0.05, t: 3.5, n: 9.0, aspect: 0.7,
-            proj_count: 12, proj_rows: 2, proj_pos: 0.6, proj_size: 0.14, proj_sharp: 0.25 } },
+            proj_count: 12, proj_rows: 2, proj_pos: 0.6, proj_size: 0.14, proj_sharp: 0.25 },
+          // Pale spiral bands on a dark ground (inverted palette).
+          pig: { pig_regime: 1, pig_scale: 0.35, pig_contrast: 0.75, pig_density: 0.4, pig_angle: 0.0, pig_irregularity: 0.2 },
+          palette: { base: "#3a2c1c", accent: "#8a6e48", pattern: "#e8dcc0" } },
         { sci: "Cancellaria reticulata", common: "Common nutmeg",
           params: { w: 1.9, d: 0.12, t: 2.8, n: 6.0, aspect: 0.8,
-            rib_ax_count: 14, rib_ax_amp: 0.07, rib_sp_count: 11, rib_sp_amp: 0.05, rib_sharp: 0.35 } },
+            rib_ax_count: 14, rib_ax_amp: 0.07, rib_sp_count: 11, rib_sp_amp: 0.05, rib_sharp: 0.35 },
+          // Reticulate (net) pigmentation — true to the name.
+          pig: { pig_regime: 6, pig_scale: 0.5, pig_contrast: 0.7, pig_density: 0.55, pig_angle: 0.0, pig_irregularity: 0.2 },
+          palette: { base: "#e6cda2", accent: "#b07a3f", pattern: "#7c3f1a" } },
         { sci: "Bursa bufonia", common: "Toad frog shell",
-          params: { w: 2.0, d: 0.12, t: 2.3, n: 6.0, aspect: 0.8, varix_count: 3, varix_amp: 0.28 } },
+          params: { w: 2.0, d: 0.12, t: 2.3, n: 6.0, aspect: 0.8, varix_count: 3, varix_amp: 0.28 },
+          // Mottled blotchy brown.
+          pig: { pig_regime: 6, pig_scale: 0.65, pig_contrast: 0.55, pig_density: 0.45, pig_angle: 0.0, pig_irregularity: 0.5 },
+          palette: { base: "#d6c09a", accent: "#9a6a40", pattern: "#5c3a1f" } },
         { sci: "Terebra maculata", common: "Marlin-spike auger",
-          params: { w: 1.4, d: 0.0, t: 11.0, n: 18.0, aspect: 0.7, rib_ax_count: 18, rib_ax_amp: 0.05 } },
+          params: { w: 1.4, d: 0.0, t: 11.0, n: 18.0, aspect: 0.7, rib_ax_count: 18, rib_ax_amp: 0.05 },
+          // Spiral rows of squarish orange-brown spots ("maculata" = spotted).
+          pig: { pig_regime: 5, pig_scale: 0.5, pig_contrast: 0.8, pig_density: 0.6, pig_angle: 0.0, pig_irregularity: 0.2 },
+          palette: { base: "#f0e7d2", accent: "#caa05a", pattern: "#9c5a24" } },
       ];
 
       const speciesList = document.getElementById("species-list");
@@ -437,8 +536,24 @@
       function applySpecies(i) {
         const s = SPECIES[i];
         if (!s) return;
+        // Shape.
         for (const f of FIELDS) form.elements[f].value = s.params[f] ?? 0; // unset → 0
-        update();
+        // Pigmentation (Layer 3): species value → current demo default fallback.
+        const pig = { ...DEMO_PIG, ...(s.pig || {}) };
+        document.getElementById("pig-regime").value = pig.pig_regime;
+        for (const r of PIGMENT) {
+          if (r.key === "pig_regime") continue;
+          const el = document.getElementById("pig-" + r.key);
+          if (el) el.value = pig[r.key] ?? r.default;
+        }
+        // Palette (Layer 4): species value → default swatch fallback.
+        for (const c of PALETTE) {
+          const el = document.getElementById("pal-" + c.key);
+          if (el) el.value = (s.palette && s.palette[c.key]) || c.value;
+        }
+        update();        // shape → geometry
+        updatePigment(); // regime + RD sliders → pattern
+        updatePalette(); // palette → recolour
         for (const el of speciesList.children) el.classList.toggle("active", +el.dataset.i === i);
       }
       speciesList.addEventListener("click", (e) => {
@@ -463,16 +578,19 @@
       function wireEvents() {
         form.addEventListener("input", update); // form holds only shape params now
 
-        // Appearance: display-mode icons, colour swatches + custom, material sliders.
+        // Appearance: display-mode icons, pigmentation (regime + RD sliders +
+        // palette), and material-finish sliders.
         document.getElementById("rendermode").addEventListener("click", (e) => {
           const b = e.target.closest(".mode-btn");
           if (b) setMode(b.dataset.mode);
         });
-        document.getElementById("swatches").addEventListener("click", (e) => {
-          const b = e.target.closest(".swatch-btn");
-          if (b) setColor(b.dataset.color);
-        });
-        document.getElementById("mat-color").addEventListener("input", (e) => setColor(e.target.value));
+        document.getElementById("pig-regime").addEventListener("change", updatePigment);
+        for (const r of PIGMENT) {
+          if (r.key === "pig_regime") continue;
+          document.getElementById("pig-" + r.key).addEventListener("input", updatePigment);
+        }
+        for (const c of PALETTE)
+          document.getElementById("pal-" + c.key).addEventListener("input", updatePalette);
         for (const f of MAT_RANGES)
           document.getElementById("mat-" + f).addEventListener("input", updateMaterial);
 
@@ -519,13 +637,24 @@
         INTS = new Set(ranges.filter((r) => r.integer).map((r) => r.key));
         const rangeMap = Object.fromEntries(ranges.map((r) => [r.key, r]));
         buildControls(rangeMap);
+
+        // Layer-3 pigmentation ranges (separate Rust table → Appearance panel).
+        try {
+          PIGMENT = await viewer.pigmentRanges();
+        } catch (e) {
+          console.warn("pigment_ranges() unavailable; using fallback ranges", e);
+          PIGMENT = FALLBACK_PIGMENT;
+        }
       }
 
       initRanges().then(() => {
-        buildAppearance(); // build the right-column appearance controls
+        buildPigmentation(); // build the left-column (bottom) pigmentation controls
+        buildAppearance();   // build the right-column appearance controls
         wireEvents();
         update();          // push initial geometry values
-        updateMaterial();  // push initial material values
+        updatePigment();   // push initial pigmentation pattern (RD)
+        updatePalette();   // push initial palette
+        updateMaterial();  // push initial material finish
         setMode("solid");  // default display mode
         loadThumbnails();  // fill the species browser with rendered thumbnails
       });

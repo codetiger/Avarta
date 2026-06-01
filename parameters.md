@@ -121,46 +121,64 @@ whorl. Driven by a seeded value-noise (a pure function of the seed), so it is fu
 
 ---
 
-## Layer 3 — Pigmentation Pattern (color layout)
+## Layer 3 — Pigmentation Pattern (reaction–diffusion at the growing lip)
 
-The *arrangement* of color on the surface (not the colors themselves — those are Layer 4).
+The *arrangement* of color on the surface (not the colors themselves — those are Layer 4). Generated
+the way real shells are: pigment is secreted by the **mantle edge at the growing aperture**, so it is
+a byproduct of the *same growth sweep* that builds the geometry, not a separate paint pass. A 1-D
+**reaction–diffusion** line (Meinhardt, *The Algorithmic Beauty of Sea Shells*) runs around the lip
+(φ) and is stepped once per growth ring (θ); the 2-D surface pattern is the space–time record of that
+line, so it maps onto the mesh's existing UVs (`u=θ`, `v=φ`) with no distortion. Implemented in
+`crates/shell-core` (`pigment_field`) and emitted as a pigment texture alongside the mesh.
 
-For a **simple** first model we use a pattern-type selector plus a few modifiers. (The biologically
-"true" generator is reaction–diffusion at the mantle edge — noted at the bottom as a future option.)
+The core is a Gray–Scott RD line (robust across regimes; its `(F,K)` sit in Pearson's pattern space).
+A **regime** selects/steers the configuration — a drift term advects the pattern around the lip
+(oblique / chevron leans), and a commarginal growth-rhythm oscillation (the periodic deposition along
+a growth line) supplies axial stripes and combines with the RD stripes for spots (×) and reticulation
+(max). All `pig_*` ranges live in `PIGMENT_RANGES` (the UI source of truth, via `pigment_ranges()`).
 
 | Param | Name | Meaning | Range / Type |
 |-------|------|---------|--------------|
-| **pat_type** | Pattern type | Layout family. | enum: `solid`, `spiral_bands`, `axial_stripes`, `oblique_lines`, `chevrons`, `spots`, `reticulated`, `tented` |
-| **pat_count** | Feature count | Number of bands/stripes/spots around the relevant direction. | 0 – 50 |
-| **pat_width** | Feature width | Thickness of each band/line, or size of each spot (duty cycle). | 0 – 1 (fraction covered) |
-| **pat_angle** | Pattern angle | Orientation, e.g. for oblique lines and chevrons. | 0 – 90° |
-| **pat_phase** | Pattern phase | Offset/start position of the repeat. | 0 – 360° |
-| **pat_jitter** | Irregularity | Randomness in placement/size (0 = perfectly regular). | 0 – 1 |
-| **pat_scale** | Feature scale | Overall size of pattern features relative to the shell. | 0 – 1 |
+| **pig_regime** | Pattern regime | RD configuration. | enum index: 0=`solid`, 1=`spiral_bands`, 2=`axial_stripes`, 3=`oblique_lines`, 4=`chevrons`/`tented`, 5=`spots`, 6=`reticulated` |
+| **pig_scale** | Feature scale | RD diffusion → feature wavelength (small = fine/many, large = coarse/few). | 0 – 1 |
+| **pig_contrast** | Contrast | Soft gradient (0, accent mid-tones show) → crisp hard edge (1). | 0 – 1 |
+| **pig_density** | Density | Reaction speed → feature spacing along the coil (θ). | 0 – 1 |
+| **pig_angle** | Obliqueness | Travelling-wave drift speed → diagonal lean (oblique / chevrons). | 0 – 1 |
+| **pig_irregularity** | Irregularity | Seeded noise in the pattern (0 = perfectly regular). | 0 – 1 |
 
-Pattern-type cues from nature: `spiral_bands` → many *Cerithium*/top shells; `chevrons`/`tented` →
-*Conus textile*, *Oliva*; `axial_stripes` → *Nerita*; `reticulated` → many cowries.
+The pattern is reproducible from the shape `seed` (shared with the geometry jitter), so re-rolling the
+seed re-varies both shape and pigment together. Regime cues from nature: `spiral_bands` →
+*Cerithium*/top shells; `chevrons`/`tented` → *Conus textile*, *Oliva*; `axial_stripes` → *Nerita*;
+`reticulated` → many cowries.
 
 ---
 
 ## Layer 4 — Color & Material
 
-The actual colors filling the pattern, plus surface finish.
+The actual colors filling the pattern, plus surface finish. Applied **viewer-side**: Layer 3 emits a
+single-channel pigment field (0 = ground … 1 = pigment), and the viewer maps it through a 3-stop
+palette (`base → accent → pattern`) into the material's colour map. Keeping colour out of the RD core
+means re-colouring is a cheap texture re-bake — no geometry rebuild or RD rerun (`setPalette` in
+`web/shell-viewer.js`). The material finish stays on the Three.js `MeshPhysicalMaterial`.
 
 | Param | Name | Meaning | Range / Type |
 |-------|------|---------|--------------|
-| **col_base** | Base color | Background shell color. | RGB / HSV |
-| **col_pattern** | Pattern color | Color of the pigment pattern features. | RGB / HSV |
-| **col_accent** | Accent color | Optional 3rd color (multi-tone patterns). | RGB / HSV (optional) |
-| **col_aperture** | Aperture/lip color | Inner lip color, often differs (white, pink, orange). | RGB / HSV |
-| **gloss** | Glossiness | Matte/chalky → glossy/porcelain (cowries glossy, others chalky). | 0 – 1 |
-| **translucency** | Translucency | Opaque → translucent. | 0 – 1 |
+| **col_base** | Base / ground color | Unpigmented background shell color. | RGB |
+| **col_accent** | Accent color | Mid-tone (pattern↔base transition, multi-tone patterns). | RGB |
+| **col_pattern** | Pattern color | Color of the pigment pattern features. | RGB |
+| **gloss** | Glossiness | Matte/chalky → glossy/porcelain (`roughness`/`clearcoat`). | 0 – 1 |
+| **translucency** | Translucency | Opaque → translucent (`transmission`). | 0 – 1 |
+| **iridescence** | Iridescence | Thin-film nacre / pearl shimmer. | 0 – 1 |
+
+> Aperture/lip color (`col_aperture`) is deferred — it needs a φ-band region tag once non-elliptical
+> apertures / lips exist.
 
 ---
 
 ## Parameter summary
 
-The implemented generator (Layers 1–2) uses **17 shape parameters**:
+The implemented generator uses **19 shape parameters** (Layers 1–2) plus **6 pigmentation parameters**
+(Layer 3):
 
 | Group | Params | # |
 |-------|--------|---|
@@ -169,12 +187,15 @@ The implemented generator (Layers 1–2) uses **17 shape parameters**:
 | Projections | proj_count, proj_rows, proj_pos, proj_size, proj_sharp | 5 |
 | Varices | varix_count, varix_amp | 2 |
 | Randomness | seed, jitter | 2 |
-| **Total (implemented)** | | **19** |
+| **Shape total** | | **19** |
+| Pigmentation (Layer 3) | pig_regime, pig_scale, pig_contrast, pig_density, pig_angle, pig_irregularity | 6 |
 
-Layers 3–4 (pigmentation, colour) are specified above but not yet built. Tessellation
-(`seg_theta`, `seg_phi`) is **internal** — auto-derived from the ornament frequency so ribs/cords/
-projections never facet — not a user parameter. Every ornament amplitude defaults to 0, so a plain
-shell (e.g. a smooth *Nautilus*) is fully described by just the coiling 5.
+Layer 3 (pigmentation, reaction–diffusion) is implemented in `crates/shell-core` and emitted as a
+pigment texture; Layer 4 (palette + finish) is applied viewer-side. Tessellation (`seg_theta`,
+`seg_phi`) is **internal** — auto-derived from the ornament frequency so ribs/cords/projections never
+facet — not a user parameter; the pigment grid resolution is likewise internal. Every ornament
+amplitude defaults to 0 and `pig_regime` defaults to `solid`, so a plain shell (e.g. a smooth
+*Nautilus*) is fully described by just the coiling 5.
 
 ### Reduced 22 → 17 (common-shell priority)
 
@@ -192,6 +213,8 @@ To keep every slider mapped to a distinct, common axis of natural variation:
 ## Deferred / future
 
 - **ID / UUID packing** — quantizing and bit-packing these into a compact identifier (last step).
-- **Reaction–diffusion pigmentation** — replacing the simple `pat_type` enum with an
-  activator–inhibitor model (Meinhardt) for biologically realistic, emergent patterns.
+- **Pigmentation refinement** — the RD regimes (Layer 3) are empirically tuned approximations; the
+  chevron/`tented` (*Conus textile*) family especially can be sharpened against the species harness.
+  A true full Meinhardt activator–inhibitor/hormone model would deepen the emergent realism further.
+- **Aperture/lip colour** (`col_aperture`) — needs a φ-band region tag (see Layer 4).
 - **Non-elliptical apertures** — siphonal canals, lips, and complex openings beyond the ellipse.

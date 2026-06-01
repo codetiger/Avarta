@@ -13,7 +13,7 @@ import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { GTAOPass } from "three/addons/postprocessing/GTAOPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
-import init, { generate, param_ranges } from "./pkg/shell_wasm.js";
+import init, { generate, param_ranges, pigment_ranges } from "./pkg/shell_wasm.js";
 import wasmUrl from "./pkg/shell_wasm_bg.wasm?url";
 // A real (CC0) equirectangular HDRI — drives both the IBL reflections and the
 // visible background, so the scene looks photographed rather than floating on a
@@ -48,6 +48,14 @@ const DEFAULTS = {
   varix_amp: 0,
   seed: 0,
   jitter: 0,
+  // Layer 3 — pigmentation (reaction–diffusion). Defaults show a gentle pattern
+  // on first load; species presets and the UI override these.
+  pig_regime: 1,
+  pig_scale: 0.5,
+  pig_contrast: 0.6,
+  pig_density: 0.5,
+  pig_angle: 0.5,
+  pig_irregularity: 0.15,
   seg_theta: 96,
   seg_phi: 48,
 };
@@ -71,11 +79,17 @@ const ATTRS = [
   "varix_amp",
   "seed",
   "jitter",
+  "pig_regime",
+  "pig_scale",
+  "pig_contrast",
+  "pig_density",
+  "pig_angle",
+  "pig_irregularity",
 ];
 
-// Viewer-side material (becomes Layer-4 params + ID fields later).
+// Viewer-side material finish (Layer-4 surface, sans colour — the colour now
+// comes from the pigment texture, so `color` stays white and the map carries it).
 const MAT_DEFAULTS = {
-  color: 0xe7d8b6,
   roughness: 0.3,
   clearcoat: 0.55,
   clearcoatRoughness: 0.25,
@@ -87,6 +101,15 @@ const MAT_DEFAULTS = {
   envMapIntensity: 1.0,
 };
 
+// Layer-4 palette: the colours the reaction–diffusion pigment field is mapped
+// through (0 = base ground, mid = accent, 1 = pattern). Applied viewer-side so
+// recolouring is a cheap texture re-bake with no geometry/RD rerun.
+const PALETTE_DEFAULTS = {
+  base: "#efe3c8", // unpigmented shell ground (cream)
+  accent: "#b9793f", // mid-tone transition
+  pattern: "#6f3d1d", // pigment (warm brown)
+};
+
 class ShellViewer extends HTMLElement {
   static get observedAttributes() {
     return ATTRS;
@@ -96,12 +119,19 @@ class ShellViewer extends HTMLElement {
     super();
     this.params = { ...DEFAULTS };
     this.matParams = { ...MAT_DEFAULTS };
+    this.palette = { ...PALETTE_DEFAULTS };
     this._loaded = false;
     this._framed = false;
     this._mode = "live"; // "live" raster | "hq" path-traced
     this._renderMode = "solid"; // "solid" | "wireframe" | "solid+wireframe"
     this.pathTracer = null;
     this._ptLib = null;
+    // Cached pigment field (from the last generate) so palette changes re-bake
+    // the texture without re-running the reaction–diffusion sim.
+    this._pigment = null;
+    this._pigW = 0;
+    this._pigH = 0;
+    this._pigTex = null;
     this.attachShadow({ mode: "open" });
   }
 
@@ -150,6 +180,15 @@ class ShellViewer extends HTMLElement {
     return param_ranges();
   }
 
+  /**
+   * The Rust-defined Layer-3 pigmentation range table — drives the Appearance
+   * panel's pigmentation sliders. Same shape as `paramRanges()`.
+   */
+  async pigmentRanges() {
+    await ensureWasm();
+    return pigment_ranges();
+  }
+
   /** Regenerate geometry from shape params. */
   setParams(patch) {
     Object.assign(this.params, patch);
@@ -163,6 +202,17 @@ class ShellViewer extends HTMLElement {
   setMaterial(patch) {
     Object.assign(this.matParams, patch);
     this._applyMaterial();
+    this._resetHQ();
+  }
+
+  /**
+   * Update the Layer-4 pigment palette (base / accent / pattern colours).
+   * Look-only: re-bakes the pigment texture from the cached field with no
+   * geometry rebuild or reaction–diffusion rerun.
+   */
+  setPalette(patch) {
+    Object.assign(this.palette, patch);
+    this._bakePigmentTexture();
     this._resetHQ();
   }
 
@@ -362,7 +412,9 @@ class ShellViewer extends HTMLElement {
       try {
         // Lower tessellation than the live view — thumbnails are small, and some
         // species (high n + ornament) are very dense at full resolution.
-        m = generate({ ...DEFAULTS, seg_theta: 64, seg_phi: 32, ...params });
+        // pig_regime 0 (solid) short-circuits the reaction–diffusion sim: these
+        // shape-only thumbnails carry no UVs/colour map, so the field is unused.
+        m = generate({ ...DEFAULTS, seg_theta: 64, seg_phi: 32, ...params, pig_regime: 0 });
       } catch (e) {
         console.warn("[shell-viewer] thumbnail generate failed:", e);
         out.push(null);
@@ -531,7 +583,10 @@ class ShellViewer extends HTMLElement {
   _applyMaterial() {
     const m = this.material;
     const p = this.matParams;
-    m.color = new THREE.Color(p.color);
+    // The pigment texture carries all surface colour, so the base colour stays
+    // white (a map multiplies the colour — any tint would shift the palette).
+    m.map = this._pigTex || null;
+    m.color.set(0xffffff);
     m.roughness = p.roughness;
     m.metalness = 0.0;
     // Clearcoat renders black in the path tracer (three-gpu-pathtracer bug), so
@@ -557,6 +612,62 @@ class ShellViewer extends HTMLElement {
     m.needsUpdate = true;
   }
 
+  /**
+   * Bake the cached reaction–diffusion pigment field into the material's colour
+   * map, mapping the 0..255 pigment scalar through the Layer-4 palette
+   * (base → accent → pattern). The field's axes are the growth axes, so the
+   * mesh's own UVs (u=θ along the coil, v=φ around the lip) map it with no
+   * distortion: clamp along the coil, repeat around the periodic lip. Works in
+   * both the live raster and the path tracer (both honour `material.map`).
+   */
+  _bakePigmentTexture() {
+    if (!this._pigment || !this._pigW || !this._pigH) return;
+    const w = this._pigW;
+    const h = this._pigH;
+
+    // 256-entry colour LUT, lerped in linear space then encoded to sRGB bytes.
+    const base = new THREE.Color(this.palette.base);
+    const accent = new THREE.Color(this.palette.accent);
+    const pattern = new THREE.Color(this.palette.pattern);
+    const lut = new Uint8Array(256 * 3);
+    const c = new THREE.Color();
+    for (let i = 0; i < 256; i++) {
+      const t = i / 255;
+      if (t < 0.5) c.copy(base).lerp(accent, t / 0.5);
+      else c.copy(accent).lerp(pattern, (t - 0.5) / 0.5);
+      c.convertLinearToSRGB();
+      lut[i * 3] = Math.round(c.r * 255);
+      lut[i * 3 + 1] = Math.round(c.g * 255);
+      lut[i * 3 + 2] = Math.round(c.b * 255);
+    }
+
+    const pig = this._pigment;
+    const data = new Uint8Array(w * h * 4);
+    for (let p = 0; p < w * h; p++) {
+      const v = pig[p];
+      data[p * 4] = lut[v * 3];
+      data[p * 4 + 1] = lut[v * 3 + 1];
+      data[p * 4 + 2] = lut[v * 3 + 2];
+      data[p * 4 + 3] = 255;
+    }
+
+    const tex = new THREE.DataTexture(data, w, h, THREE.RGBAFormat);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.wrapS = THREE.ClampToEdgeWrapping; // u = θ along the coil
+    tex.wrapT = THREE.RepeatWrapping; // v = φ around the lip (closed loop)
+    tex.generateMipmaps = true;
+    tex.minFilter = THREE.LinearMipmapLinearFilter;
+    tex.magFilter = THREE.LinearFilter;
+    if (this.renderer) tex.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
+    tex.needsUpdate = true;
+
+    if (this._pigTex) this._pigTex.dispose();
+    this._pigTex = tex;
+    this.material.map = tex;
+    this.material.color.set(0xffffff);
+    this.material.needsUpdate = true;
+  }
+
   _rebuild() {
     let m;
     try {
@@ -569,6 +680,11 @@ class ShellViewer extends HTMLElement {
     const normals = m.normals;
     const uvs = m.uvs;
     const indices = m.indices;
+    // Read the pigment field before freeing the wasm-side mesh, then cache it so
+    // palette tweaks can re-bake the texture without re-running generate().
+    this._pigment = m.pigment;
+    this._pigW = m.pig_w;
+    this._pigH = m.pig_h;
     m.free();
 
     const geo = this.mesh.geometry;
@@ -578,6 +694,9 @@ class ShellViewer extends HTMLElement {
     geo.setIndex(new THREE.BufferAttribute(indices, 1));
     geo.computeTangents(); // needs uv + normal; enables normal/detail maps
     geo.computeBoundingSphere();
+
+    // Re-bake the pigment colour map for the freshly generated field.
+    this._bakePigmentTexture();
 
     // Keep the wireframe overlay in sync with the new geometry (cheap when hidden).
     this.wire.geometry.dispose();
