@@ -40,9 +40,32 @@ pub struct ShellParams {
     /// Profile: 0 = smooth sine wave, 1 = sharp knife-edge ridge.
     #[serde(default)]
     pub rib_sharp: f32,
-    /// Phase drift per whorl: 0 = ribs aligned up the spire, ~π = staggered.
+
+    // --- projections: the nodule → spine continuum ---
+    /// Projections per whorl (count along the coil). 0 = none.
     #[serde(default)]
-    pub rib_phase: f32,
+    pub proj_count: f32,
+    /// Rows of projections around the aperture. 1 = single row (spine-like),
+    /// ≥2 = evenly spaced rows (nodulose).
+    #[serde(default)]
+    pub proj_rows: f32,
+    /// Position of the first row around the aperture, radians (0..2π).
+    #[serde(default)]
+    pub proj_pos: f32,
+    /// Projection size (height/length) as a fraction of tube radius.
+    #[serde(default)]
+    pub proj_size: f32,
+    /// Sharpness: 0 = rounded blunt bead (nodule), 1 = narrow needle (spine).
+    #[serde(default)]
+    pub proj_sharp: f32,
+
+    // --- varices ---
+    /// Varices (prominent transverse ridges) per whorl. 0 = none.
+    #[serde(default)]
+    pub varix_count: f32,
+    /// Varix prominence as a fraction of tube radius.
+    #[serde(default)]
+    pub varix_amp: f32,
 
     /// Tessellation: segments per revolution along the coil.
     #[serde(default = "default_seg_theta")]
@@ -75,7 +98,13 @@ impl Default for ShellParams {
             rib_sp_count: 0.0,
             rib_sp_amp: 0.0,
             rib_sharp: 0.0,
-            rib_phase: 0.0,
+            proj_count: 0.0,
+            proj_rows: 0.0,
+            proj_pos: 0.0,
+            proj_size: 0.0,
+            proj_sharp: 0.0,
+            varix_count: 0.0,
+            varix_amp: 0.0,
             seg_theta: 96,
             seg_phi: 48,
         }
@@ -102,6 +131,13 @@ fn ribbed(x: f32, sharp: f32) -> f32 {
     2.0 * c.powf(p) - 1.0
 }
 
+/// Positive periodic lobe in `[0, 1]`, peaking at multiples of 2π. `power`
+/// narrows it: low = broad bump (nodule / varix), high = narrow spike (needle).
+#[inline]
+fn lobe(x: f32, power: f32) -> f32 {
+    x.cos().max(0.0).powf(power)
+}
+
 /// Generate a shell surface by sweeping an elliptical aperture along a
 /// logarithmic helico-spiral.
 ///
@@ -114,21 +150,50 @@ pub fn generate(p: &ShellParams) -> Mesh {
     let aspect = p.aspect.max(0.05);
     let w = p.w.max(1.0001);
 
-    // Auto-refine tessellation to the ornament frequency: each rib/cord needs
-    // enough samples to read as a smooth wave, otherwise high-frequency ornament
-    // aliases into faceted "sharp" lines. Plain shells keep the cheap base
-    // resolution; only ornate ones pay for refinement. Capped to bound mesh size.
-    const MIN_SAMPLES_PER_FEATURE: f32 = 12.0;
-    const MAX_SEG: u32 = 256;
-    let mut seg_phi = p.seg_phi.max(3);
-    if p.rib_sp_amp.abs() > 1e-6 && p.rib_sp_count > 0.5 {
-        let need = (p.rib_sp_count * MIN_SAMPLES_PER_FEATURE).ceil() as u32;
-        seg_phi = seg_phi.max(need).min(MAX_SEG);
+    // Feature profile exponents — also drive how narrow each feature is.
+    const VARIX_POWER: f32 = 3.0; // rounded raised ridges
+    let rib_power = 1.0 + p.rib_sharp.clamp(0.0, 1.0) * 8.0; // matches `ribbed`
+    let proj_power = 2.0 + p.proj_sharp.clamp(0.0, 1.0).powi(2) * 40.0; // matches `lobe` use
+    let proj_active = p.proj_size.abs() > 1e-6 && p.proj_count > 0.5 && p.proj_rows > 0.5;
+
+    // Auto-refine tessellation per direction from the *impacting* parameters:
+    // a feature needs enough samples across each peak, and sharper peaks (higher
+    // profile power) are narrower — so required resolution ≈ frequency · √power,
+    // not a flat per-feature constant. This is why a sharp projection needs far
+    // denser segments than a blunt one. Plain shells keep the cheap base res; a
+    // global vertex budget bounds many-whorl × sharp combos.
+    const SPC: f32 = 16.0; // samples per feature-cycle at power 1
+    const MAX_THETA: u32 = 768;
+    const MAX_PHI: u32 = 384;
+    const VERT_BUDGET: f32 = 800_000.0;
+    let spc = |power: f32| SPC * power.sqrt();
+
+    let mut theta_need = 0.0f32; // features periodic along the coil
+    let mut phi_need = 0.0f32; // features periodic around the aperture
+    if p.rib_ax_amp.abs() > 1e-6 {
+        theta_need = theta_need.max(p.rib_ax_count * spc(rib_power));
     }
-    let mut seg_theta = p.seg_theta.max(3);
-    if p.rib_ax_amp.abs() > 1e-6 && p.rib_ax_count > 0.5 {
-        let need = (p.rib_ax_count * MIN_SAMPLES_PER_FEATURE).ceil() as u32;
-        seg_theta = seg_theta.max(need).min(MAX_SEG);
+    if p.rib_sp_amp.abs() > 1e-6 {
+        phi_need = phi_need.max(p.rib_sp_count * spc(rib_power));
+    }
+    if p.varix_amp.abs() > 1e-6 {
+        theta_need = theta_need.max(p.varix_count * spc(VARIX_POWER));
+    }
+    if proj_active {
+        theta_need = theta_need.max(p.proj_count * spc(proj_power));
+        phi_need = phi_need.max(p.proj_rows.max(1.0) * spc(proj_power));
+    }
+
+    let base_theta = p.seg_theta.max(3);
+    let base_phi = p.seg_phi.max(3);
+    let mut seg_theta = (base_theta as f32).max(theta_need).ceil().min(MAX_THETA as f32) as u32;
+    let mut seg_phi = (base_phi as f32).max(phi_need).ceil().min(MAX_PHI as f32) as u32;
+    // Scale both down together if the total vertex count would blow the budget.
+    let est = seg_theta as f32 * n * seg_phi as f32;
+    if est > VERT_BUDGET {
+        let s = (VERT_BUDGET / est).sqrt();
+        seg_theta = ((seg_theta as f32 * s) as u32).max(base_theta);
+        seg_phi = ((seg_phi as f32 * s) as u32).max(base_phi);
     }
     let cols = seg_phi as usize;
 
@@ -144,6 +209,7 @@ pub fn generate(p: &ShellParams) -> Mesh {
 
     let two_pi = 2.0 * PI;
     let sharp = p.rib_sharp;
+
     for i in 0..theta_verts {
         let theta = total_theta * (i as f32) / (theta_steps as f32);
         let g = (k * theta).exp();
@@ -154,20 +220,29 @@ pub fn generate(p: &ShellParams) -> Mesh {
         let st = theta.sin();
         let cz = p.t * radius; // centre height: ∝ radius gives the conical spire
 
-        // Axial ribs/waves: periodic along the coil; rib_phase drifts them per
-        // whorl (0 = aligned up the spire, ~π = staggered). Same for all phi, so
-        // the whole cross-section pulses → transverse ribs / corrugation.
-        let axial = p.rib_ax_amp
-            * ribbed(p.rib_ax_count * theta + p.rib_phase * (theta / two_pi), sharp);
+        // θ-only ornament terms (constant around the aperture).
+        // Axial ribs/waves (a non-integer count makes them drift across whorls).
+        let axial = p.rib_ax_amp * ribbed(p.rib_ax_count * theta, sharp);
+        // Varices: a few prominent raised transverse ridges per whorl.
+        let varix = p.varix_amp * lobe(p.varix_count * theta, VARIX_POWER);
+        // θ-window for the localised projections.
+        let proj_theta = lobe(p.proj_count * theta, proj_power);
 
         for j in 0..cols {
             let phi = two_pi * (j as f32) / (cols as f32);
-            // Spiral cords: periodic around the aperture, continuous along the
-            // coil (depends on phi only) → longitudinal cords spiralling the whorl.
+            // Spiral cords: continuous along the coil → longitudinal cords.
             let spiral = p.rib_sp_amp * ribbed(p.rib_sp_count * phi, sharp);
-            // Displace the aperture outward; scale by g so ornament stays
-            // proportional (self-similar) along the whole shell.
-            let disp = g * (axial + spiral);
+            // Projections: blunt beads (rows≥2, low sharp) → needle spines
+            // (rows=1, high sharp), localised on a θ×φ grid offset by proj_pos.
+            let proj = if proj_active {
+                p.proj_size * proj_theta * lobe(p.proj_rows * (phi - p.proj_pos), proj_power)
+            } else {
+                0.0
+            };
+
+            // Radial displacement along the aperture's outward direction, scaled
+            // by g so ornament stays proportional along the whole shell.
+            let disp = g * (axial + spiral + varix + proj);
             let rr = radius + (ap_r + disp) * phi.cos();
             positions.push(rr * ct); // x
             positions.push(rr * st); // y
@@ -250,11 +325,11 @@ mod tests {
 
     #[test]
     fn ribs_perturb_the_surface_but_stay_finite() {
-        // Pin resolution at the cap on both so auto-refinement can't change the
-        // topology, making the comparison element-wise.
+        // Pin resolution at the caps on both so auto-refinement clamps equally,
+        // keeping topology identical for an element-wise comparison.
         let base = ShellParams {
-            seg_phi: 256,
-            seg_theta: 256,
+            seg_phi: 384,
+            seg_theta: 768,
             ..ShellParams::default()
         };
         let smooth = generate(&base);
@@ -274,6 +349,54 @@ mod tests {
             .any(|(a, b)| (a - b).abs() > 1e-4);
         assert!(moved, "ornamentation should change vertex positions");
         assert!(ribbed.positions.iter().all(|x| x.is_finite()));
+    }
+
+    #[test]
+    fn projections_and_varices_each_perturb_and_stay_finite() {
+        let base = ShellParams {
+            seg_phi: 384,
+            seg_theta: 768,
+            ..ShellParams::default()
+        };
+        let smooth = generate(&base);
+        let variants = [
+            // single-row needle spine
+            ShellParams { proj_count: 8.0, proj_rows: 1.0, proj_pos: 1.1, proj_size: 0.8, proj_sharp: 0.75, ..base.clone() },
+            // multi-row blunt nodules
+            ShellParams { proj_count: 12.0, proj_rows: 2.0, proj_size: 0.12, proj_sharp: 0.15, ..base.clone() },
+            ShellParams { varix_count: 3.0, varix_amp: 0.3, ..base.clone() },
+        ];
+        for (k, v) in variants.iter().enumerate() {
+            let m = generate(v);
+            assert_eq!(m.positions.len(), smooth.positions.len(), "variant {k} topology");
+            let moved = smooth
+                .positions
+                .iter()
+                .zip(&m.positions)
+                .any(|(a, b)| (a - b).abs() > 1e-4);
+            assert!(moved, "variant {k} should change the surface");
+            assert!(m.positions.iter().all(|x| x.is_finite()), "variant {k} finite");
+        }
+    }
+
+    #[test]
+    fn sharper_projections_get_denser_tessellation() {
+        // Same count/size; only sharpness differs. The needle is narrower, so it
+        // must auto-refine to a denser mesh than the blunt bead.
+        let common = ShellParams {
+            proj_count: 8.0,
+            proj_rows: 1.0,
+            proj_size: 0.4,
+            ..ShellParams::default()
+        };
+        let blunt = generate(&ShellParams { proj_sharp: 0.1, ..common.clone() });
+        let needle = generate(&ShellParams { proj_sharp: 1.0, ..common.clone() });
+        assert!(
+            needle.positions.len() > blunt.positions.len(),
+            "a sharp needle should refine denser than a blunt bead ({} vs {})",
+            needle.positions.len(),
+            blunt.positions.len()
+        );
     }
 
     #[test]

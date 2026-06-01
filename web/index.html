@@ -89,9 +89,37 @@
           <input name="rib_sharp" type="range" min="0" max="1" step="0.01" value="0" />
           <output id="val-rib_sharp">0.00</output></div></label>
 
-        <label>Rib phase drift<div class="row">
-          <input name="rib_phase" type="range" min="0" max="6.28" step="0.01" value="0" />
-          <output id="val-rib_phase">0.00</output></div></label>
+        <div class="section">Projections (nodules → spines)</div>
+
+        <label>Projections / whorl<div class="row">
+          <input name="proj_count" type="range" min="0" max="20" step="1" value="0" />
+          <output id="val-proj_count">0</output></div></label>
+
+        <label>Rows around aperture<div class="row">
+          <input name="proj_rows" type="range" min="0" max="5" step="1" value="0" />
+          <output id="val-proj_rows">0</output></div></label>
+
+        <label>Row position (φ)<div class="row">
+          <input name="proj_pos" type="range" min="0" max="6.28" step="0.01" value="0" />
+          <output id="val-proj_pos">0.00</output></div></label>
+
+        <label>Size<div class="row">
+          <input name="proj_size" type="range" min="0" max="1.2" step="0.01" value="0" />
+          <output id="val-proj_size">0.00</output></div></label>
+
+        <label>Sharpness (bead → needle)<div class="row">
+          <input name="proj_sharp" type="range" min="0" max="1" step="0.01" value="0" />
+          <output id="val-proj_sharp">0.00</output></div></label>
+
+        <div class="section">Varices</div>
+
+        <label>Varices / whorl<div class="row">
+          <input name="varix_count" type="range" min="0" max="6" step="1" value="0" />
+          <output id="val-varix_count">0</output></div></label>
+
+        <label>Varix prominence<div class="row">
+          <input name="varix_amp" type="range" min="0" max="0.5" step="0.01" value="0" />
+          <output id="val-varix_amp">0.00</output></div></label>
       </form>
 
       <footer>Drag to orbit · scroll to zoom.</footer>
@@ -106,9 +134,13 @@
       const form = document.getElementById("controls");
       const FIELDS = [
         "w", "d", "t", "n", "aspect",
-        "rib_ax_count", "rib_ax_amp", "rib_sp_count", "rib_sp_amp", "rib_sharp", "rib_phase",
+        "rib_ax_count", "rib_ax_amp", "rib_sp_count", "rib_sp_amp", "rib_sharp",
+        "proj_count", "proj_rows", "proj_pos", "proj_size", "proj_sharp",
+        "varix_count", "varix_amp",
       ];
-      const INTS = new Set(["rib_ax_count", "rib_sp_count"]);
+      const INTS = new Set([
+        "rib_ax_count", "rib_sp_count", "proj_count", "proj_rows", "varix_count",
+      ]);
 
       const readForm = () =>
         Object.fromEntries(FIELDS.map((f) => [f, parseFloat(form.elements[f].value)]));
@@ -144,6 +176,18 @@
         "Ribbed spire": {
           w: 1.7, d: 0.06, t: 4.0, n: 8, aspect: 0.6,
           rib_ax_count: 15, rib_ax_amp: 0.08, rib_sharp: 0.6,
+        },
+        "Murex (spines)": {
+          w: 1.9, d: 0.10, t: 1.8, n: 6, aspect: 0.8,
+          proj_count: 8, proj_rows: 1, proj_pos: 1.1, proj_size: 0.7, proj_sharp: 0.75,
+        },
+        "Tuberculate (nodules)": {
+          w: 1.8, d: 0.10, t: 2.2, n: 6, aspect: 0.85,
+          proj_count: 12, proj_rows: 2, proj_pos: 0.6, proj_size: 0.12, proj_sharp: 0.15,
+        },
+        "Varices (frog shell)": {
+          w: 2.0, d: 0.12, t: 1.6, n: 6, aspect: 0.85,
+          varix_count: 3, varix_amp: 0.28,
         },
       };
       const preset = document.getElementById("preset");

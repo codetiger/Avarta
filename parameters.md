@@ -71,34 +71,26 @@ reticulata*).
 
 | Param | Name | Meaning | Range (typical) |
 |-------|------|---------|-----------------|
-| **rib_ax_count** | Axial rib / wave count | Number of ribs (or waves) running *across* the whorl, per revolution. | 0 – 40 |
+| **rib_ax_count** | Axial rib / wave count | Number of ribs (or waves) running *across* the whorl, per revolution. A non-integer count makes ribs drift/stagger across whorls. | 0 – 40 |
 | **rib_ax_amp** | Axial amplitude | Radial swell relative to tube radius; high = structural wave, low = fine rib. | 0 – 0.6 |
 | **rib_sp_count** | Spiral cord count | Number of cords running *along* the coil (parallel to the suture). | 0 – 30 |
 | **rib_sp_amp** | Spiral amplitude | Radial swell of spiral cords. | 0 – 0.6 |
 | **rib_sharp** | Profile sharpness | Smooth sine **wave** (0) → rounded fold → knife-edge ridge (1). | 0 – 1 |
-| **rib_phase** | Rib alignment | Phase across whorls: aligned → continuous axial ribs up the spire; offset → staggered. | 0 – 360° |
 
-### Spines
+### Projections (nodules → spines)
 
-Pointed projections, typically at the shoulder or periphery of the whorl.
-
-| Param | Name | Meaning | Range (typical) |
-|-------|------|---------|-----------------|
-| **spine_count** | Spines per whorl | Number around one revolution. | 0 – 20 |
-| **spine_len** | Spine length | Projection length relative to tube radius. | 0 – 1.5 |
-| **spine_pos** | Spine position (φ) | Where around the aperture they sit (shoulder, periphery, base). | 0 – 360° |
-| **spine_angle** | Spine angle | Tilt away from the surface (flat-lying vs. upright). | 0 – 90° |
-| **spine_taper** | Spine taper | Bluntness vs. needle-sharp. | 0 – 1 |
-
-### Nodules / tubercles
-
-Rounded bumps, often where axial and spiral elements cross.
+Localized projections on a θ×φ grid. Nodules and spines are the **same mechanism at
+two ends of one continuum** — a nodule is short, blunt and multi-row; a spine is long,
+sharp and single-row — so they share one parameter group. `proj_sharp` drives the
+bead→needle profile via a quadratic power curve (`power = 2 + sharp²·40`).
 
 | Param | Name | Meaning | Range (typical) |
 |-------|------|---------|-----------------|
-| **nod_rows** | Nodule rows | Number of spiral rows of nodules on a whorl. | 0 – 5 |
-| **nod_count** | Nodules per row | Count around one revolution. | 0 – 30 |
-| **nod_size** | Nodule size | Diameter/height of each bump. | 0 – 0.3 |
+| **proj_count** | Projections per whorl | Number along the coil, per revolution. | 0 – 20 |
+| **proj_rows** | Rows around aperture | 1 = single row (spine-like); ≥2 = evenly spaced rows (nodulose). | 0 – 5 |
+| **proj_pos** | Row position (φ) | Where the first row sits around the aperture (shoulder, periphery, base). | 0 – 2π |
+| **proj_size** | Size | Height/length relative to tube radius (bead → long spine). | 0 – 1.2 |
+| **proj_sharp** | Sharpness | Rounded blunt **bead** / nodule (0) → narrow **needle** spine (1). | 0 – 1 |
 
 ### Varices
 
@@ -108,7 +100,6 @@ Thickened ridges marking former aperture positions / growth pauses (prominent in
 |-------|------|---------|-----------------|
 | **varix_count** | Varices per whorl | Number per revolution (commonly 3 ≈ every 120°). | 0 – 6 |
 | **varix_amp** | Varix prominence | Thickness/projection of each varix. | 0 – 0.5 |
-| **varix_phase** | Varix alignment | Whether varices align whorl-to-whorl or offset (jog). | 0 – 360° |
 
 ---
 
@@ -151,16 +142,31 @@ The actual colors filling the pattern, plus surface finish.
 
 ## Parameter summary
 
-| Layer | Group | # params |
-|-------|-------|----------|
-| 1 | Coiling geometry (W, D, T, n, r₀, chir, S_ar, S_tilt) | 8 |
-| 2 | Ornamentation (ribs, spines, nodules, varices) | 17 |
-| 3 | Pigmentation pattern | 7 |
-| 4 | Color & material | 6 |
-| | **Total** | **~38** |
+The implemented generator (Layers 1–2) uses **17 shape parameters**:
 
-Many ornament/pigment amplitudes default to 0, so a *plain* shell (e.g. a smooth *Nautilus*) is
-described by just the Layer-1 handful — the rest only "switch on" for ornate species.
+| Group | Params | # |
+|-------|--------|---|
+| Coiling | W, D, T, n, aspect | 5 |
+| Ribs & waves | rib_ax_count/amp, rib_sp_count/amp, rib_sharp | 5 |
+| Projections | proj_count, proj_rows, proj_pos, proj_size, proj_sharp | 5 |
+| Varices | varix_count, varix_amp | 2 |
+| **Total (implemented)** | | **17** |
+
+Layers 3–4 (pigmentation, colour) are specified above but not yet built. Tessellation
+(`seg_theta`, `seg_phi`) is **internal** — auto-derived from the ornament frequency so ribs/cords/
+projections never facet — not a user parameter. Every ornament amplitude defaults to 0, so a plain
+shell (e.g. a smooth *Nautilus*) is fully described by just the coiling 5.
+
+### Reduced 22 → 17 (common-shell priority)
+
+To keep every slider mapped to a distinct, common axis of natural variation:
+
+- **Spines + nodules merged** into one *projections* continuum — they are the same mechanism (a
+  localized projection) at two ends of one natural scale (blunt bead → needle spine). 8 params → 5.
+- **Dropped `spine_angle`** (spine lean) — a subtle detail, and the only feature needing a 3D
+  tangential offset; radial projections cover common shells.
+- **Dropped `rib_phase` and `varix_phase`** — "stagger across whorls" is uncommon and overlaps with
+  simply using a non-integer count (which already drifts the features); aligned is the common case.
 
 ---
 
