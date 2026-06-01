@@ -1,5 +1,6 @@
 /target
 /web/pkg
+/web/dist
 **/*.rs.bk
 .DS_Store
 node_modules

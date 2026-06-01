@@ -21,6 +21,7 @@ pub fn generate(params: JsValue) -> Result<JsMesh, JsValue> {
     Ok(JsMesh {
         positions: m.positions,
         normals: m.normals,
+        uvs: m.uvs,
         indices: m.indices,
     })
 }
@@ -31,6 +32,7 @@ pub fn generate(params: JsValue) -> Result<JsMesh, JsValue> {
 pub struct JsMesh {
     positions: Vec<f32>,
     normals: Vec<f32>,
+    uvs: Vec<f32>,
     indices: Vec<u32>,
 }
 
@@ -43,6 +45,10 @@ impl JsMesh {
     #[wasm_bindgen(getter)]
     pub fn normals(&self) -> Vec<f32> {
         self.normals.clone()
+    }
+    #[wasm_bindgen(getter)]
+    pub fn uvs(&self) -> Vec<f32> {
+        self.uvs.clone()
     }
     #[wasm_bindgen(getter)]
     pub fn indices(&self) -> Vec<u32> {

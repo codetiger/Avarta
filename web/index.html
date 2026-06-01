@@ -37,6 +37,9 @@
       .dice { margin-top: 10px; width: 100%; padding: 8px; cursor: pointer;
         background: #161b22; color: #d8dee9; border: 1px solid #2a313b; border-radius: 6px; }
       .dice:hover { border-color: #c8a35a; color: #e7d8b6; }
+      .swatch { flex: 1; height: 26px; padding: 0; cursor: pointer;
+        background: #161b22; border: 1px solid #2a313b; border-radius: 6px; }
+      .rstatus { margin-top: 8px; font-size: 11px; color: #8b97a8; min-height: 14px; }
       footer { margin-top: 22px; font-size: 11px; color: #6b7686; }
       code { color: #c8a35a; }
     </style>
@@ -135,7 +138,34 @@
           <output id="val-seed">0</output></div></label>
 
         <button type="button" id="dice" class="dice">🎲 Random seed</button>
+
+        <div class="section">Material</div>
+
+        <label>Base colour<div class="row">
+          <input name="matcolor" type="color" value="#e7d8b6" class="swatch" />
+        </div></label>
+
+        <label>Roughness<div class="row">
+          <input name="roughness" type="range" min="0" max="1" step="0.01" value="0.3" />
+          <output id="val-roughness">0.30</output></div></label>
+
+        <label>Clearcoat<div class="row">
+          <input name="clearcoat" type="range" min="0" max="1" step="0.01" value="0.55" />
+          <output id="val-clearcoat">0.55</output></div></label>
+
+        <label>Translucency<div class="row">
+          <input name="transmission" type="range" min="0" max="1" step="0.01" value="0" />
+          <output id="val-transmission">0.00</output></div></label>
+
+        <label>Iridescence<div class="row">
+          <input name="iridescence" type="range" min="0" max="1" step="0.01" value="0" />
+          <output id="val-iridescence">0.00</output></div></label>
       </form>
+
+      <div class="section">Render</div>
+      <button type="button" id="render" class="dice">▶ Render (path trace)</button>
+      <button type="button" id="savepng" class="dice">⬇ Save PNG</button>
+      <div id="rstatus" class="rstatus"></div>
 
       <footer>Drag to orbit · scroll to zoom.</footer>
     </aside>
@@ -173,7 +203,25 @@
         clearTimeout(timer);
         timer = setTimeout(() => viewer.setParams(readForm()), 30);
       }
-      form.addEventListener("input", update);
+
+      // Material controls update the look without regenerating geometry.
+      const MAT_RANGES = ["roughness", "clearcoat", "transmission", "iridescence"];
+      const MAT_SET = new Set([...MAT_RANGES, "matcolor"]);
+      function updateMaterial() {
+        for (const f of MAT_RANGES) {
+          const out = document.getElementById("val-" + f);
+          if (out) out.textContent = parseFloat(form.elements[f].value).toFixed(2);
+        }
+        viewer.setMaterial({
+          ...Object.fromEntries(MAT_RANGES.map((f) => [f, parseFloat(form.elements[f].value)])),
+          color: parseInt(form.elements["matcolor"].value.slice(1), 16),
+        });
+      }
+
+      form.addEventListener("input", (e) => {
+        if (MAT_SET.has(e.target.name)) updateMaterial();
+        else update();
+      });
 
       const PRESETS = {
         "Snail (default)":        { w: 2.0, d: 0.15, t: 1.5,  n: 5,  aspect: 1.0 },
@@ -222,7 +270,31 @@
         update();
       });
 
-      update(); // push initial slider values to the viewer
+      // Path-traced "Render" mode.
+      const renderBtn = document.getElementById("render");
+      const rstatus = document.getElementById("rstatus");
+      let rendering = false;
+      renderBtn.addEventListener("click", async () => {
+        if (rendering) {
+          viewer.stopHQ();
+          rendering = false;
+          renderBtn.textContent = "▶ Render (path trace)";
+          rstatus.textContent = "";
+          return;
+        }
+        rstatus.textContent = "starting path tracer…";
+        const ok = await viewer.renderHQ();
+        if (!ok) { rstatus.textContent = "path tracer unavailable (see console)"; return; }
+        rendering = true;
+        renderBtn.textContent = "■ Stop";
+      });
+      viewer.addEventListener("hq-progress", (e) => {
+        if (rendering) rstatus.textContent = `path-tracing… ${e.detail.samples} samples (drag to re-aim)`;
+      });
+      document.getElementById("savepng").addEventListener("click", () => viewer.saveImage("shell.png"));
+
+      update(); // push initial geometry values
+      updateMaterial(); // push initial material values
     </script>
   </body>
 </html>

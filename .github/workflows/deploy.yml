@@ -41,13 +41,23 @@ jobs:
         with:
           version: latest
 
-      - name: Build wasm
+      - name: Build wasm into web/pkg
         run: wasm-pack build crates/shell-wasm --target web --release --out-dir ../../web/pkg
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Build web (Vite)
+        run: npm ci && npm run build
+        working-directory: web
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: web
+          path: web/dist
 
   deploy:
     needs: build

@@ -1,9 +1,11 @@
 # Spiral
 
 A mathematical generator for spiral shell shapes (snails, *Nautilus*, augers …).
-Mesh math lives in a small Rust crate compiled to WebAssembly; a no-bundler web
-page renders it with Three.js. Hosted on GitHub Pages and embeddable as a
-`<shell-viewer>` web component in any page (e.g. an Astro blog).
+Mesh math lives in a small Rust crate compiled to WebAssembly; a Vite-bundled web
+app renders it with Three.js — a real-time **PBR++** viewport (image-based
+lighting, physical material with translucency/iridescence/clearcoat, ambient
+occlusion, ACES tone-mapping, bloom) plus an on-demand **path-traced "Render"**
+mode (three-gpu-pathtracer) for photo-quality stills.
 
 See [`parameters.md`](./parameters.md) for the parameter model and
 [`scope.md`](./scope.md) for what shapes are in / out of scope.
@@ -11,16 +13,17 @@ See [`parameters.md`](./parameters.md) for the parameter model and
 ## Layout
 
 ```
-crates/shell-core   Pure Rust mesh math (Raup W/D/T helico-spiral). cargo-testable.
-crates/shell-wasm   wasm-bindgen adapter -> JS typed arrays.
-web/                Static no-bundler page: index.html + shell-viewer.js (+ pkg/).
-.github/workflows   GitHub Pages build & deploy.
+crates/shell-core   Pure Rust mesh math (Raup W/D/T helico-spiral + ornament + seeded jitter).
+crates/shell-wasm   wasm-bindgen adapter -> JS typed arrays (positions/normals/uvs/indices).
+web/                Vite app: index.html + <shell-viewer> component (+ generated pkg/).
+.github/workflows   GitHub Pages build & deploy (wasm + Vite).
 ```
 
 ## Prerequisites
 
 - Rust (stable) + the wasm target: `rustup target add wasm32-unknown-unknown`
 - [`wasm-pack`](https://rustwasm.github.io/wasm-pack/installer/)
+- Node.js 18+ (for Vite)
 
 ## Develop
 
@@ -31,35 +34,26 @@ cargo test -p shell-core
 # 2. build the wasm package into web/pkg/
 wasm-pack build crates/shell-wasm --target web --out-dir ../../web/pkg
 
-# 3. serve the static page with no-cache headers
-python3 dev-server.py 8080
-# open http://localhost:8080
+# 3. run the Vite dev server (installs deps on first run)
+cd web && npm install && npm run dev
+# open http://localhost:8090
 ```
 
-> Use `dev-server.py`, not `python3 -m http.server`: browsers cache the `.wasm`
-> aggressively, so after a rebuild a plain server can keep running the OLD wasm
-> (which silently ignores newly added parameters). `dev-server.py` sends
-> `Cache-Control: no-store`. After a rebuild, hard-reload once (⌘⇧R) to be safe.
-
-Three.js is loaded from esm.sh and the `.wasm` is resolved relative to the
-module, so the page is fully static — no bundler, no install step.
+After changing Rust, re-run `wasm-pack` (step 2); Vite hot-reloads the rest.
+Vite bundles `three` + `three-gpu-pathtracer` from npm (one deduped `three`
+instance — required for the path tracer) and treats the `.wasm` as an asset.
 
 ## Deploy (GitHub Pages)
 
 1. Push to a GitHub repo (`git init && git add -A && git commit && git push`).
 2. Repo **Settings → Pages → Build and deployment → Source: GitHub Actions**.
-3. Pushing to `main` runs `.github/workflows/deploy.yml`, which builds the wasm
-   and publishes `web/`.
+3. Pushing to `main` runs `.github/workflows/deploy.yml`: native tests → build
+   wasm → `npm ci && npm run build` (Vite) → publish `web/dist/`. The Vite base
+   is `./` so it works under the `/<repo>/` Pages subpath.
 
-## Embed in Astro (or any page)
+## Embed elsewhere
 
-The component is self-contained — drop two lines into an `.mdx` post:
-
-```html
-<script type="module" src="https://<user>.github.io/spiral/shell-viewer.js"></script>
-<shell-viewer w="2.0" d="0.15" t="1.5" n="5" aspect="1.0"
-              style="display:block;height:420px"></shell-viewer>
-```
-
-It lazy-loads the wasm + Three.js and renders into its own shadow DOM, so it
-won't collide with the host page's styles.
+The `<shell-viewer>` element renders into its own shadow DOM. Because the app is
+now bundled, embed it by pointing at the built component bundle from `web/dist`
+(rather than the raw source). Attributes drive the shape, e.g.
+`<shell-viewer w="2.0" d="0.15" t="1.5" n="5" aspect="1.0">`.

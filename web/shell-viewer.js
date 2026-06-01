@@ -1,24 +1,24 @@
-// <shell-viewer> — a self-contained custom element that renders a shell mesh.
+// <shell-viewer> — a custom element that renders a shell mesh.
 //
-// It loads the wasm generator and Three.js itself, so embedding it anywhere
-// (the standalone page, or an Astro MDX post) is just:
-//   <script type="module" src=".../shell-viewer.js"></script>
-//   <shell-viewer w="2" d="0.15" t="1.5" n="5"></shell-viewer>
-//
-// Three.js is imported from esm.sh (which rewrites the addons' bare `three`
-// imports), so no import map is needed on the host page.
+// Bundled with Vite: three + addons + the path tracer come from npm (one deduped
+// `three` instance), and the wasm is a Vite asset. The path tracer (Phase 2
+// "Render" mode) is imported lazily so it's code-split out of the initial load.
 
-import * as THREE from "https://esm.sh/three@0.160.0";
-import { OrbitControls } from "https://esm.sh/three@0.160.0/examples/jsm/controls/OrbitControls.js";
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+import { GTAOPass } from "three/addons/postprocessing/GTAOPass.js";
+import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
+import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import init, { generate } from "./pkg/shell_wasm.js";
+import wasmUrl from "./pkg/shell_wasm_bg.wasm?url";
 
-// Initialise the wasm module once, shared across all <shell-viewer> instances.
-// The .wasm URL is resolved relative to THIS module, so it works under a
-// GitHub Pages subpath and when hot-linked from another origin.
 let wasmReady;
 function ensureWasm() {
   if (!wasmReady) {
-    wasmReady = init(new URL("./pkg/shell_wasm_bg.wasm", import.meta.url));
+    wasmReady = init({ module_or_path: wasmUrl });
   }
   return wasmReady;
 }
@@ -39,6 +39,20 @@ const ATTRS = [
   "seed", "jitter",
 ];
 
+// Viewer-side material (becomes Layer-4 params + ID fields later).
+const MAT_DEFAULTS = {
+  color: 0xe7d8b6,
+  roughness: 0.3,
+  clearcoat: 0.55,
+  clearcoatRoughness: 0.25,
+  transmission: 0.0,
+  thickness: 0.6,
+  ior: 1.45,
+  iridescence: 0.0,
+  attenuationColor: 0xd9c7a0,
+  envMapIntensity: 1.0,
+};
+
 class ShellViewer extends HTMLElement {
   static get observedAttributes() {
     return ATTRS;
@@ -47,8 +61,12 @@ class ShellViewer extends HTMLElement {
   constructor() {
     super();
     this.params = { ...DEFAULTS };
+    this.matParams = { ...MAT_DEFAULTS };
     this._loaded = false;
     this._framed = false;
+    this._mode = "live"; // "live" raster | "hq" path-traced
+    this.pathTracer = null;
+    this._ptLib = null;
     this.attachShadow({ mode: "open" });
   }
 
@@ -60,7 +78,6 @@ class ShellViewer extends HTMLElement {
 
     this._initThree();
 
-    // Pick up params declared as attributes (Astro embedding path).
     for (const a of ATTRS) {
       if (this.hasAttribute(a)) this.params[a] = parseFloat(this.getAttribute(a));
     }
@@ -87,43 +104,189 @@ class ShellViewer extends HTMLElement {
     if (this._loaded) this._rebuild();
   }
 
-  /** Imperative API used by the standalone page's form. */
+  /** Regenerate geometry from shape params. */
   setParams(patch) {
     Object.assign(this.params, patch);
-    if (this._loaded) this._rebuild();
+    if (this._loaded) {
+      this._rebuild();
+      this._resetHQ();
+    }
+  }
+
+  /** Update material/look without regenerating geometry. */
+  setMaterial(patch) {
+    Object.assign(this.matParams, patch);
+    this._applyMaterial();
+    this._resetHQ();
+  }
+
+  /**
+   * Switch to the progressive path tracer ("photo" render). Lazily code-split.
+   * Returns true on success, false (and stays live) on failure.
+   */
+  async renderHQ() {
+    if (!this._loaded) return false;
+    try {
+      if (!this._ptLib) {
+        this._ptLib = await import("three-gpu-pathtracer");
+      }
+      if (!this.pathTracer) {
+        this.pathTracer = new this._ptLib.WebGLPathTracer(this.renderer);
+        this.pathTracer.renderScale = 0.75; // accumulate a touch faster
+        this.pathTracer.tiles.set(2, 2);
+      }
+      // The tracer needs a raw equirect env, not the PMREM map; show it as a
+      // soft studio backdrop so translucent shells read against something.
+      this.scene.environment = this._ensureHQEnv();
+      this.scene.background = this.envHQ;
+      this._mode = "hq";
+      this._applyMaterial(); // drops clearcoat for the tracer
+      this.controls.update();
+      await this.pathTracer.setScene(this.scene, this.camera);
+      return true;
+    } catch (e) {
+      console.warn("[shell-viewer] path tracer unavailable:", e.stack || e.message);
+      this._mode = "live";
+      return false;
+    }
+  }
+
+  /** Return to the live raster viewport. */
+  stopHQ() {
+    this.scene.environment = this.envPMREM;
+    this.scene.background = this._liveBg;
+    this._mode = "live";
+    this._applyMaterial(); // restore clearcoat for live
+  }
+
+  /** Build (once) a procedural gradient-sky equirect env for the path tracer. */
+  _ensureHQEnv() {
+    if (!this.envHQ) {
+      const tex = new this._ptLib.GradientEquirectTexture();
+      tex.topColor.set(0xdfe7ef); // bright sky
+      tex.bottomColor.set(0x352f28); // warm dim ground
+      tex.update();
+      this.envHQ = tex;
+    }
+    return this.envHQ;
+  }
+
+  /** Rebuild the path-trace scene + restart accumulation (after any change). */
+  _resetHQ() {
+    if (this._mode === "hq" && this.pathTracer) {
+      this.pathTracer.setScene(this.scene, this.camera);
+    }
+  }
+
+  /** Download the current frame (live or path-traced) as a PNG. */
+  saveImage(filename = "shell.png") {
+    const a = document.createElement("a");
+    a.href = this.renderer.domElement.toDataURL("image/png");
+    a.download = filename;
+    a.click();
   }
 
   _initThree() {
     const w = this.clientWidth || 600;
     const h = this.clientHeight || 400;
 
-    this.renderer = new THREE.WebGLRenderer({ antialias: true });
+    this.renderer = new THREE.WebGLRenderer({ antialias: false, preserveDrawingBuffer: true });
     this.renderer.setPixelRatio(window.devicePixelRatio);
     this.renderer.setSize(w, h, false);
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 0.7;
     this.shadowRoot.append(this.renderer.domElement);
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x0e1116);
+    this._liveBg = this.scene.background;
 
-    this.camera = new THREE.PerspectiveCamera(45, w / h, 0.01, 1000);
-    this.camera.position.set(3, 2, 4);
+    // Image-based lighting from a generated studio room (zero external asset).
+    // Live raster uses the prefiltered PMREM map; the path tracer needs a raw
+    // cube/equirect env, so we lazily build a cube version for HQ mode.
+    const pmrem = new THREE.PMREMGenerator(this.renderer);
+    this.envPMREM = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    this.scene.environment = this.envPMREM;
+    this.scene.environmentIntensity = 0.7; // RoomEnvironment is bright; dim the IBL
+    pmrem.dispose();
+    this.envHQ = null;
+
+    this.camera = new THREE.PerspectiveCamera(40, w / h, 0.01, 100);
+    this.camera.position.set(2.4, 1.5, 3.0);
 
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
+    // Moving the camera resets the path-trace accumulation.
+    this.controls.addEventListener("change", () => {
+      if (this._mode === "hq" && this.pathTracer) this.pathTracer.updateCamera();
+    });
 
-    this.scene.add(new THREE.HemisphereLight(0xffffff, 0x202830, 1.0));
-    const key = new THREE.DirectionalLight(0xffffff, 1.6);
-    key.position.set(5, 8, 5);
+    // A soft key light for a crisp specular streak on top of the ambient IBL.
+    const key = new THREE.DirectionalLight(0xfff4e6, 0.9);
+    key.position.set(4, 6, 5);
     this.scene.add(key);
 
-    this.material = new THREE.MeshStandardMaterial({
-      color: 0xe7d8b6,
-      roughness: 0.5,
-      metalness: 0.05,
-      side: THREE.DoubleSide,
-    });
+    this.material = new THREE.MeshPhysicalMaterial({ side: THREE.DoubleSide });
+    this._applyMaterial();
     this.mesh = new THREE.Mesh(new THREE.BufferGeometry(), this.material);
     this.scene.add(this.mesh);
+
+    this._initPost(w, h);
+  }
+
+  _initPost(w, h) {
+    // HDR, multisampled target → bloom works + free MSAA anti-aliasing.
+    const size = this.renderer.getDrawingBufferSize(new THREE.Vector2());
+    const rt = new THREE.WebGLRenderTarget(size.x, size.y, {
+      type: THREE.HalfFloatType,
+      samples: 4,
+    });
+    this.composer = new EffectComposer(this.renderer, rt);
+    this.composer.setPixelRatio(window.devicePixelRatio);
+    this.composer.setSize(w, h);
+
+    this.composer.addPass(new RenderPass(this.scene, this.camera));
+
+    this.gtao = new GTAOPass(this.scene, this.camera, w, h);
+    this.gtao.output = GTAOPass.OUTPUT.Default;
+    this.gtao.updateGtaoMaterial({ radius: 0.25, distanceExponent: 1.0, scale: 1.0, samples: 16 });
+    this.composer.addPass(this.gtao);
+
+    // Subtle: only genuine HDR highlights (>~1.0 luminance) bloom, so the lit
+    // surface itself doesn't glow/read as emissive.
+    const bloom = new UnrealBloomPass(new THREE.Vector2(w, h), 0.04, 0.4, 1.2);
+    this.composer.addPass(bloom);
+
+    this.composer.addPass(new OutputPass());
+  }
+
+  _applyMaterial() {
+    const m = this.material;
+    const p = this.matParams;
+    m.color = new THREE.Color(p.color);
+    m.roughness = p.roughness;
+    m.metalness = 0.0;
+    // Clearcoat renders black in the path tracer (three-gpu-pathtracer bug), so
+    // disable it in HQ mode; it stays on for the live raster where it looks good.
+    m.clearcoat = this._mode === "hq" ? 0 : p.clearcoat;
+    m.clearcoatRoughness = p.clearcoatRoughness;
+    m.ior = p.ior;
+    m.iridescence = p.iridescence;
+    m.iridescenceIOR = 1.3;
+    m.envMapIntensity = p.envMapIntensity;
+    m.transmission = p.transmission;
+    // Volume absorption (attenuation) only when actually translucent — a finite
+    // attenuationDistance is applied as absorption by the path tracer even at
+    // transmission 0, which would swallow all light and render the shell black.
+    if (p.transmission > 0.001) {
+      m.thickness = p.thickness;
+      m.attenuationColor = new THREE.Color(p.attenuationColor);
+      m.attenuationDistance = 2.5; // gentle, unit-scale shell
+    } else {
+      m.thickness = 0;
+      m.attenuationDistance = Infinity;
+    }
+    m.needsUpdate = true;
   }
 
   _rebuild() {
@@ -136,27 +299,24 @@ class ShellViewer extends HTMLElement {
     }
     const positions = m.positions;
     const normals = m.normals;
+    const uvs = m.uvs;
     const indices = m.indices;
-    m.free(); // release the wasm-side struct; typed arrays above are JS-owned
+    m.free();
 
     const geo = this.mesh.geometry;
     geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
     geo.setAttribute("normal", new THREE.BufferAttribute(normals, 3));
+    geo.setAttribute("uv", new THREE.BufferAttribute(uvs, 2));
     geo.setIndex(new THREE.BufferAttribute(indices, 1));
+    geo.computeTangents(); // needs uv + normal; enables normal/detail maps
     geo.computeBoundingSphere();
+    // Geometry is already unit-normalised + centred in Rust, so no mesh transform
+    // is needed — and the BVH/path tracer get small, precision-friendly coords.
 
-    // Keep the shell centred at the origin so orbiting stays natural.
-    const s = geo.boundingSphere;
-    this.mesh.position.set(-s.center.x, -s.center.y, -s.center.z);
-
-    // Frame the camera once on first build; afterwards leave the user's view.
     if (!this._framed) {
-      const r = Math.max(s.radius, 1e-3);
-      this.camera.position.setLength(r * 3);
-      this.camera.near = r / 100;
-      this.camera.far = r * 100;
-      this.camera.updateProjectionMatrix();
       this.controls.target.set(0, 0, 0);
+      this.camera.position.set(2.4, 1.5, 3.0);
+      this.camera.updateProjectionMatrix();
       this._framed = true;
     }
   }
@@ -166,14 +326,23 @@ class ShellViewer extends HTMLElement {
     const h = this.clientHeight;
     if (!w || !h) return;
     this.renderer.setSize(w, h, false);
+    this.composer.setSize(w, h);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
+    this._resetHQ();
   }
 
   _animate() {
     this._raf = requestAnimationFrame(() => this._animate());
     this.controls.update();
-    this.renderer.render(this.scene, this.camera);
+    if (this._mode === "hq" && this.pathTracer) {
+      this.pathTracer.renderSample();
+      this.dispatchEvent(
+        new CustomEvent("hq-progress", { detail: { samples: Math.floor(this.pathTracer.samples) } })
+      );
+    } else {
+      this.composer.render();
+    }
   }
 }
 

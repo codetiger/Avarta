@@ -128,6 +128,8 @@ pub struct Mesh {
     pub positions: Vec<f32>,
     /// xyz normal triples (per vertex, parallel to `positions`).
     pub normals: Vec<f32>,
+    /// uv pairs (per vertex): u along the coil, v around the aperture.
+    pub uvs: Vec<f32>,
     /// Triangle indices into the vertex arrays.
     pub indices: Vec<u32>,
 }
@@ -253,6 +255,7 @@ pub fn generate(p: &ShellParams) -> Mesh {
 
     let mut positions = Vec::with_capacity(theta_verts * cols * 3);
     let mut normals = vec![0.0f32; theta_verts * cols * 3];
+    let mut uvs = Vec::with_capacity(theta_verts * cols * 2);
 
     let two_pi = 2.0 * PI;
     let sharp = p.rib_sharp;
@@ -310,6 +313,8 @@ pub fn generate(p: &ShellParams) -> Mesh {
         let varix = p.varix_amp * varix_ampj * lobe(p.varix_count * theta_w, VARIX_POWER);
         let proj_theta = lobe(p.proj_count * theta_w, proj_power);
 
+        let u = i as f32 / theta_steps as f32; // 0..1 along the coil
+
         for col in 0..cols {
             let phi = two_pi * (col as f32) / (cols as f32);
             let phi_o = phi + phi_shift; // warped φ for ornament placement
@@ -335,6 +340,8 @@ pub fn generate(p: &ShellParams) -> Mesh {
             positions.push(rr * ct); // x
             positions.push(rr * st); // y
             positions.push(cz + (ap_z + disp) * phi.sin()); // z
+            uvs.push(u);
+            uvs.push(col as f32 / cols as f32); // v around the aperture
         }
     }
 
@@ -379,9 +386,36 @@ pub fn generate(p: &ShellParams) -> Mesh {
         }
     }
 
+    // Normalise to a unit sphere centred at the origin. Raw coords span a huge
+    // range (g = e^(kθ) can reach thousands), which wrecks downstream float
+    // precision (BVH / ray tracing). Translate + uniform scale leave the
+    // already-unit normals unchanged.
+    let vcount = (positions.len() / 3).max(1) as f32;
+    let (mut cx, mut cy, mut cz) = (0.0f32, 0.0f32, 0.0f32);
+    for v in positions.chunks_exact(3) {
+        cx += v[0];
+        cy += v[1];
+        cz += v[2];
+    }
+    cx /= vcount;
+    cy /= vcount;
+    cz /= vcount;
+    let mut max_r2 = 0.0f32;
+    for v in positions.chunks_exact(3) {
+        let (dx, dy, dz) = (v[0] - cx, v[1] - cy, v[2] - cz);
+        max_r2 = max_r2.max(dx * dx + dy * dy + dz * dz);
+    }
+    let scale = 1.0 / max_r2.sqrt().max(1e-6);
+    for v in positions.chunks_exact_mut(3) {
+        v[0] = (v[0] - cx) * scale;
+        v[1] = (v[1] - cy) * scale;
+        v[2] = (v[2] - cz) * scale;
+    }
+
     Mesh {
         positions,
         normals,
+        uvs,
         indices,
     }
 }
@@ -396,6 +430,7 @@ mod tests {
         assert!(!m.positions.is_empty());
         assert_eq!(m.positions.len() % 3, 0);
         assert_eq!(m.normals.len(), m.positions.len());
+        assert_eq!(m.uvs.len(), m.positions.len() / 3 * 2);
         assert_eq!(m.indices.len() % 3, 0);
         assert!(m.positions.iter().all(|x| x.is_finite()));
         let vcount = (m.positions.len() / 3) as u32;
