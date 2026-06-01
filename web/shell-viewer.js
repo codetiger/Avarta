@@ -99,6 +99,7 @@ class ShellViewer extends HTMLElement {
     this._loaded = false;
     this._framed = false;
     this._mode = "live"; // "live" raster | "hq" path-traced
+    this._renderMode = "solid"; // "solid" | "wireframe" | "solid+wireframe"
     this.pathTracer = null;
     this._ptLib = null;
     this.attachShadow({ mode: "open" });
@@ -166,6 +167,24 @@ class ShellViewer extends HTMLElement {
   }
 
   /**
+   * Choose the live display mode: "solid" (default), "wireframe" (edges only),
+   * or "solid+wireframe" (shaded surface with a faint edge overlay). Look-only —
+   * no geometry regeneration. The path-traced still always renders the solid
+   * surface regardless (see renderHQ).
+   */
+  setRenderMode(mode) {
+    this._renderMode = mode;
+    if (this._mode !== "hq") this._applyRenderMode();
+    this._resetHQ();
+  }
+
+  /** Apply the current display mode by toggling the solid mesh / wire overlay. */
+  _applyRenderMode() {
+    this.mesh.visible = this._renderMode !== "wireframe";
+    this.wire.visible = this._renderMode !== "solid";
+  }
+
+  /**
    * Switch to the progressive path tracer ("photo" render). Lazily code-split.
    * Returns true on success, false (and stays live) on failure.
    */
@@ -187,6 +206,10 @@ class ShellViewer extends HTMLElement {
       this.scene.environment = this._ensureHQEnv();
       this.scene.background = this._ensureHQBg();
       this._mode = "hq";
+      // The path tracer only traces the solid mesh (it ignores the line overlay),
+      // so always render the shaded surface for the still — even from a wireframe view.
+      this.mesh.visible = true;
+      this.wire.visible = false;
       this._applyMaterial(); // drops clearcoat for the tracer
       this.controls.update();
       await this.pathTracer.setScene(this.scene, this.camera);
@@ -207,6 +230,7 @@ class ShellViewer extends HTMLElement {
     this.scene.background = this._liveBg;
     this._mode = "live";
     this._applyMaterial(); // restore clearcoat for live
+    this._applyRenderMode(); // restore the chosen solid/wireframe display
   }
 
   /**
@@ -301,6 +325,81 @@ class ShellViewer extends HTMLElement {
     }
   }
 
+  /**
+   * Render a set of parameter presets to small PNG data-URLs for the species
+   * browser. Uses a throwaway offscreen renderer (separate GL context) with
+   * simple lights — no IBL/post — so it's cheap; the context is freed afterwards.
+   * Returns an array of data-URL strings (or null for any preset that fails),
+   * aligned with `paramSets`.
+   */
+  async makeThumbnails(paramSets, size = 128) {
+    await ensureWasm();
+    const r = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    r.setPixelRatio(1);
+    r.setSize(size, size, false);
+    r.toneMapping = THREE.ACESFilmicToneMapping;
+    r.toneMappingExposure = 0.85;
+
+    const scene = new THREE.Scene();
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x36383f, 1.15));
+    const key = new THREE.DirectionalLight(0xfff4e6, 1.4);
+    key.position.set(3, 5, 4);
+    scene.add(key);
+    const cam = new THREE.PerspectiveCamera(40, 1, 0.01, 100);
+    const mat = new THREE.MeshPhysicalMaterial({
+      side: THREE.DoubleSide,
+      color: 0xe7d8b6,
+      roughness: 0.4,
+      metalness: 0.0,
+      clearcoat: 0.3,
+    });
+    const mesh = new THREE.Mesh(new THREE.BufferGeometry(), mat);
+    scene.add(mesh);
+
+    const out = [];
+    for (const params of paramSets) {
+      let m;
+      try {
+        // Lower tessellation than the live view — thumbnails are small, and some
+        // species (high n + ornament) are very dense at full resolution.
+        m = generate({ ...DEFAULTS, seg_theta: 64, seg_phi: 32, ...params });
+      } catch (e) {
+        console.warn("[shell-viewer] thumbnail generate failed:", e);
+        out.push(null);
+        continue;
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute("position", new THREE.BufferAttribute(m.positions, 3));
+      geo.setAttribute("normal", new THREE.BufferAttribute(m.normals, 3));
+      geo.setIndex(new THREE.BufferAttribute(m.indices, 1));
+      m.free();
+      geo.computeBoundingSphere();
+      mesh.geometry.dispose();
+      mesh.geometry = geo;
+
+      // Frame the camera to the mesh from the canonical front-and-above pose.
+      const bs = geo.boundingSphere;
+      const rad = bs.radius || 1;
+      const fov = (cam.fov * Math.PI) / 180;
+      const dist = (rad / Math.sin(fov / 2)) * 1.15;
+      const dir = new THREE.Vector3(0.22, 0.32, 1.0).normalize();
+      cam.position.copy(bs.center).addScaledVector(dir, dist);
+      cam.near = Math.max(dist - rad * 2, 0.01);
+      cam.far = dist + rad * 4;
+      cam.lookAt(bs.center);
+      cam.updateProjectionMatrix();
+
+      r.render(scene, cam);
+      out.push(r.domElement.toDataURL("image/png"));
+    }
+
+    mesh.geometry.dispose();
+    mat.dispose();
+    r.dispose();
+    r.forceContextLoss?.();
+    return out;
+  }
+
   /** Download the current frame (live or path-traced) as a PNG. */
   saveImage(filename = "shell.png") {
     const a = document.createElement("a");
@@ -373,7 +472,27 @@ class ShellViewer extends HTMLElement {
     this.material = new THREE.MeshPhysicalMaterial({ side: THREE.DoubleSide });
     this._applyMaterial();
     this.mesh = new THREE.Mesh(new THREE.BufferGeometry(), this.material);
+    // Default to a vertically-flipped orientation: the Rust geometry arrives spire-
+    // up / aperture-facing-+Z, so a 180° turn about Z points the spire down while
+    // keeping the aperture toward the camera (rotation, not a negative scale, so
+    // normals/winding stay correct and the path tracer reads it the same way).
+    this.mesh.rotation.z = Math.PI;
     this.scene.add(this.mesh);
+
+    // A line overlay for the wireframe / solid+wireframe display modes. Shares the
+    // scene with the solid mesh; its geometry is (re)built from the mesh whenever
+    // the shape changes (see _rebuild) — it starts empty so we never construct a
+    // WireframeGeometry from the placeholder geometry (which has no positions).
+    // Hidden until a wireframe mode is selected.
+    this.wireMat = new THREE.LineBasicMaterial({
+      color: 0x8b97a8,
+      transparent: true,
+      opacity: 0.55,
+    });
+    this.wire = new THREE.LineSegments(new THREE.BufferGeometry(), this.wireMat);
+    this.wire.visible = false;
+    this.wire.rotation.z = Math.PI; // match the solid mesh's vertical flip
+    this.scene.add(this.wire);
 
     this._initPost(w, h);
   }
@@ -459,6 +578,10 @@ class ShellViewer extends HTMLElement {
     geo.setIndex(new THREE.BufferAttribute(indices, 1));
     geo.computeTangents(); // needs uv + normal; enables normal/detail maps
     geo.computeBoundingSphere();
+
+    // Keep the wireframe overlay in sync with the new geometry (cheap when hidden).
+    this.wire.geometry.dispose();
+    this.wire.geometry = new THREE.WireframeGeometry(geo);
     // Geometry is already unit-normalised, centred and oriented (spire vertical,
     // cone down, aperture facing +Z) in Rust, so no mesh transform is needed — and
     // the BVH/path tracer get small, precision-friendly coords.
@@ -475,7 +598,12 @@ class ShellViewer extends HTMLElement {
   _frameObject(useDefaultDir) {
     const bs = this.mesh.geometry.boundingSphere;
     if (!bs) return;
-    const c = bs.center;
+    // Use the world-space centre: the mesh carries a 180° flip, so a non-origin
+    // local centre lands on the opposite side once transformed. Framing the local
+    // centre directly would aim the camera at empty space and push the shell off
+    // to one side of the view.
+    this.mesh.updateMatrixWorld();
+    const c = bs.center.clone().applyMatrix4(this.mesh.matrixWorld);
     const r = bs.radius || 1;
     const fov = (this.camera.fov * Math.PI) / 180;
     const dist = (r / Math.sin(fov / 2)) * 1.12;
