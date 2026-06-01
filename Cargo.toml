@@ -1,0 +1,7 @@
+[workspace]
+members = ["crates/shell-core", "crates/shell-wasm"]
+resolver = "2"
+
+[profile.release]
+opt-level = "s"   # optimise wasm for size
+lto = true

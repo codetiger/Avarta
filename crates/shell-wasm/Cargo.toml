@@ -1,0 +1,14 @@
+[package]
+name = "shell-wasm"
+version = "0.1.0"
+edition = "2021"
+description = "wasm-bindgen adapter exposing shell-core mesh generation to JS."
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+shell-core = { path = "../shell-core" }
+wasm-bindgen = "0.2"
+serde-wasm-bindgen = "0.6"
+console_error_panic_hook = "0.1"

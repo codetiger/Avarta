@@ -1,0 +1,8 @@
+[package]
+name = "shell-core"
+version = "0.1.0"
+edition = "2021"
+description = "Pure-Rust mesh generator for spiral shell shapes (Raup W/D/T model)."
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }

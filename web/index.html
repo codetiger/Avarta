@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Spiral — shell mesh generator</title>
+    <style>
+      :root { color-scheme: dark; }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font: 14px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+        background: #0e1116;
+        color: #d8dee9;
+        height: 100vh;
+        display: grid;
+        grid-template-columns: 300px 1fr;
+      }
+      aside {
+        padding: 20px;
+        border-right: 1px solid #20262e;
+        overflow-y: auto;
+      }
+      h1 { font-size: 16px; margin: 0 0 4px; letter-spacing: .02em; }
+      p.sub { margin: 0 0 20px; color: #8b97a8; font-size: 12px; }
+      label { display: block; margin: 16px 0 4px; font-size: 12px; color: #aeb9c9; }
+      .row { display: flex; align-items: center; gap: 10px; }
+      input[type="range"] { flex: 1; accent-color: #c8a35a; }
+      output { width: 44px; text-align: right; font-variant-numeric: tabular-nums; color: #e7d8b6; }
+      select {
+        width: 100%; padding: 7px 8px; margin-bottom: 8px;
+        background: #161b22; color: #d8dee9; border: 1px solid #2a313b; border-radius: 6px;
+      }
+      shell-viewer { width: 100%; height: 100%; }
+      .section { margin: 22px 0 2px; font-size: 11px; text-transform: uppercase;
+        letter-spacing: .08em; color: #c8a35a; border-top: 1px solid #20262e; padding-top: 14px; }
+      footer { margin-top: 22px; font-size: 11px; color: #6b7686; }
+      code { color: #c8a35a; }
+    </style>
+  </head>
+  <body>
+    <aside>
+      <h1>Spiral</h1>
+      <p class="sub">Logarithmic helico-spiral shell generator (Rust → WASM).</p>
+
+      <label for="preset">Preset</label>
+      <select id="preset"></select>
+
+      <form id="controls">
+        <label>Whorl expansion <code>W</code><div class="row">
+          <input name="w" type="range" min="1.05" max="6" step="0.01" value="2.0" />
+          <output id="val-w">2.0</output></div></label>
+
+        <label>Openness <code>D</code><div class="row">
+          <input name="d" type="range" min="0" max="0.9" step="0.01" value="0.15" />
+          <output id="val-d">0.15</output></div></label>
+
+        <label>Translation <code>T</code><div class="row">
+          <input name="t" type="range" min="0" max="12" step="0.01" value="1.5" />
+          <output id="val-t">1.5</output></div></label>
+
+        <label>Whorls <code>n</code><div class="row">
+          <input name="n" type="range" min="0.5" max="14" step="0.1" value="5" />
+          <output id="val-n">5.0</output></div></label>
+
+        <label>Aperture aspect<div class="row">
+          <input name="aspect" type="range" min="0.3" max="3" step="0.01" value="1.0" />
+          <output id="val-aspect">1.0</output></div></label>
+
+        <div class="section">Ornamentation</div>
+
+        <label>Axial ribs / waves<div class="row">
+          <input name="rib_ax_count" type="range" min="0" max="40" step="1" value="0" />
+          <output id="val-rib_ax_count">0</output></div></label>
+
+        <label>Axial amplitude<div class="row">
+          <input name="rib_ax_amp" type="range" min="0" max="0.6" step="0.01" value="0" />
+          <output id="val-rib_ax_amp">0.00</output></div></label>
+
+        <label>Spiral cords<div class="row">
+          <input name="rib_sp_count" type="range" min="0" max="30" step="1" value="0" />
+          <output id="val-rib_sp_count">0</output></div></label>
+
+        <label>Spiral amplitude<div class="row">
+          <input name="rib_sp_amp" type="range" min="0" max="0.6" step="0.01" value="0" />
+          <output id="val-rib_sp_amp">0.00</output></div></label>
+
+        <label>Profile (wave → ridge)<div class="row">
+          <input name="rib_sharp" type="range" min="0" max="1" step="0.01" value="0" />
+          <output id="val-rib_sharp">0.00</output></div></label>
+
+        <label>Rib phase drift<div class="row">
+          <input name="rib_phase" type="range" min="0" max="6.28" step="0.01" value="0" />
+          <output id="val-rib_phase">0.00</output></div></label>
+      </form>
+
+      <footer>Drag to orbit · scroll to zoom.</footer>
+    </aside>
+
+    <shell-viewer id="viewer"></shell-viewer>
+
+    <script type="module">
+      import "./shell-viewer.js";
+
+      const viewer = document.getElementById("viewer");
+      const form = document.getElementById("controls");
+      const FIELDS = [
+        "w", "d", "t", "n", "aspect",
+        "rib_ax_count", "rib_ax_amp", "rib_sp_count", "rib_sp_amp", "rib_sharp", "rib_phase",
+      ];
+      const INTS = new Set(["rib_ax_count", "rib_sp_count"]);
+
+      const readForm = () =>
+        Object.fromEntries(FIELDS.map((f) => [f, parseFloat(form.elements[f].value)]));
+
+      let timer;
+      function update() {
+        for (const f of FIELDS) {
+          const out = document.getElementById("val-" + f);
+          if (out) {
+            const v = parseFloat(form.elements[f].value);
+            out.textContent = INTS.has(f) ? String(v) : v.toFixed(2);
+          }
+        }
+        clearTimeout(timer);
+        timer = setTimeout(() => viewer.setParams(readForm()), 30);
+      }
+      form.addEventListener("input", update);
+
+      const PRESETS = {
+        "Snail (default)":        { w: 2.0, d: 0.15, t: 1.5,  n: 5,  aspect: 1.0 },
+        "Nautilus (planispiral)": { w: 3.0, d: 0.10, t: 0.0,  n: 4,  aspect: 1.0 },
+        "Auger (high spire)":     { w: 1.5, d: 0.00, t: 10.0, n: 9,  aspect: 0.5 },
+        "Globe snail":            { w: 2.6, d: 0.20, t: 0.8,  n: 4,  aspect: 1.2 },
+        "Open coil (sundial)":    { w: 1.6, d: 0.60, t: 0.3,  n: 6,  aspect: 1.0 },
+        "Cancellaria (cancellate)": {
+          w: 1.9, d: 0.12, t: 2.0, n: 6, aspect: 0.85,
+          rib_ax_count: 14, rib_ax_amp: 0.07, rib_sp_count: 11, rib_sp_amp: 0.05, rib_sharp: 0.35,
+        },
+        "Wavy planispiral": {
+          w: 2.6, d: 0.12, t: 0.0, n: 4, aspect: 1.0,
+          rib_ax_count: 9, rib_ax_amp: 0.16, rib_sharp: 0.0,
+        },
+        "Ribbed spire": {
+          w: 1.7, d: 0.06, t: 4.0, n: 8, aspect: 0.6,
+          rib_ax_count: 15, rib_ax_amp: 0.08, rib_sharp: 0.6,
+        },
+      };
+      const preset = document.getElementById("preset");
+      for (const name of Object.keys(PRESETS)) {
+        preset.append(new Option(name, name));
+      }
+      preset.addEventListener("change", () => {
+        const p = PRESETS[preset.value];
+        if (!p) return;
+        for (const f of FIELDS) form.elements[f].value = p[f] ?? 0; // unset ornament → 0
+        update();
+      });
+
+      update(); // push initial slider values to the viewer
+    </script>
+  </body>
+</html>
