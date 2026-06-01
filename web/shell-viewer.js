@@ -24,19 +24,48 @@ function ensureWasm() {
 }
 
 const DEFAULTS = {
-  w: 2.0, d: 0.15, t: 1.5, n: 5.0, aspect: 1.0,
-  rib_ax_count: 0, rib_ax_amp: 0, rib_sp_count: 0, rib_sp_amp: 0, rib_sharp: 0,
-  proj_count: 0, proj_rows: 0, proj_pos: 0, proj_size: 0, proj_sharp: 0,
-  varix_count: 0, varix_amp: 0,
-  seed: 0, jitter: 0,
-  seg_theta: 96, seg_phi: 48,
+  w: 2.0,
+  d: 0.15,
+  t: 1.5,
+  n: 5.0,
+  aspect: 1.0,
+  rib_ax_count: 0,
+  rib_ax_amp: 0,
+  rib_sp_count: 0,
+  rib_sp_amp: 0,
+  rib_sharp: 0,
+  proj_count: 0,
+  proj_rows: 0,
+  proj_pos: 0,
+  proj_size: 0,
+  proj_sharp: 0,
+  varix_count: 0,
+  varix_amp: 0,
+  seed: 0,
+  jitter: 0,
+  seg_theta: 96,
+  seg_phi: 48,
 };
 const ATTRS = [
-  "w", "d", "t", "n", "aspect",
-  "rib_ax_count", "rib_ax_amp", "rib_sp_count", "rib_sp_amp", "rib_sharp",
-  "proj_count", "proj_rows", "proj_pos", "proj_size", "proj_sharp",
-  "varix_count", "varix_amp",
-  "seed", "jitter",
+  "w",
+  "d",
+  "t",
+  "n",
+  "aspect",
+  "rib_ax_count",
+  "rib_ax_amp",
+  "rib_sp_count",
+  "rib_sp_amp",
+  "rib_sharp",
+  "proj_count",
+  "proj_rows",
+  "proj_pos",
+  "proj_size",
+  "proj_sharp",
+  "varix_count",
+  "varix_amp",
+  "seed",
+  "jitter",
 ];
 
 // Viewer-side material (becomes Layer-4 params + ID fields later).
@@ -79,7 +108,8 @@ class ShellViewer extends HTMLElement {
     this._initThree();
 
     for (const a of ATTRS) {
-      if (this.hasAttribute(a)) this.params[a] = parseFloat(this.getAttribute(a));
+      if (this.hasAttribute(a))
+        this.params[a] = parseFloat(this.getAttribute(a));
     }
 
     ensureWasm().then(() => {
@@ -133,7 +163,7 @@ class ShellViewer extends HTMLElement {
       if (!this.pathTracer) {
         this.pathTracer = new this._ptLib.WebGLPathTracer(this.renderer);
         this.pathTracer.renderScale = 0.75; // accumulate a touch faster
-        this.pathTracer.tiles.set(2, 2);
+        this.pathTracer.tiles.set(4, 4);
       }
       // Light the tracer with the *same* RoomEnvironment as the live raster (the
       // tracer auto-converts the cube map to an equirect) so the two modes match;
@@ -146,7 +176,10 @@ class ShellViewer extends HTMLElement {
       await this.pathTracer.setScene(this.scene, this.camera);
       return true;
     } catch (e) {
-      console.warn("[shell-viewer] path tracer unavailable:", e.stack || e.message);
+      console.warn(
+        "[shell-viewer] path tracer unavailable:",
+        e.stack || e.message,
+      );
       this._mode = "live";
       return false;
     }
@@ -169,7 +202,9 @@ class ShellViewer extends HTMLElement {
    */
   _ensureHQEnv() {
     if (this.envHQ) return this.envHQ;
-    const cubeRT = new THREE.WebGLCubeRenderTarget(256, { type: THREE.HalfFloatType });
+    const cubeRT = new THREE.WebGLCubeRenderTarget(256, {
+      type: THREE.HalfFloatType,
+    });
     const cubeCam = new THREE.CubeCamera(0.1, 100, cubeRT);
     const room = new RoomEnvironment();
     const prevTone = this.renderer.toneMapping;
@@ -216,7 +251,10 @@ class ShellViewer extends HTMLElement {
     const w = this.clientWidth || 600;
     const h = this.clientHeight || 400;
 
-    this.renderer = new THREE.WebGLRenderer({ antialias: false, preserveDrawingBuffer: true });
+    this.renderer = new THREE.WebGLRenderer({
+      antialias: false,
+      preserveDrawingBuffer: true,
+    });
     this.renderer.setPixelRatio(window.devicePixelRatio);
     this.renderer.setSize(w, h, false);
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -243,7 +281,10 @@ class ShellViewer extends HTMLElement {
     // TrackballControls: quaternion-style free rotation — no fixed up-axis, so no
     // gimbal lock when orbiting over the poles (OrbitControls locks there, which
     // is exactly where you want to look down the spire axis).
-    this.controls = new TrackballControls(this.camera, this.renderer.domElement);
+    this.controls = new TrackballControls(
+      this.camera,
+      this.renderer.domElement,
+    );
     this.controls.rotateSpeed = 3.5;
     this.controls.zoomSpeed = 1.2;
     this.controls.panSpeed = 0.8;
@@ -253,7 +294,8 @@ class ShellViewer extends HTMLElement {
     this.controls.maxDistance = 40;
     // Moving the camera resets the path-trace accumulation.
     this.controls.addEventListener("change", () => {
-      if (this._mode === "hq" && this.pathTracer) this.pathTracer.updateCamera();
+      if (this._mode === "hq" && this.pathTracer)
+        this.pathTracer.updateCamera();
     });
 
     // A soft key light for a crisp specular streak on top of the ambient IBL.
@@ -284,7 +326,12 @@ class ShellViewer extends HTMLElement {
 
     this.gtao = new GTAOPass(this.scene, this.camera, w, h);
     this.gtao.output = GTAOPass.OUTPUT.Default;
-    this.gtao.updateGtaoMaterial({ radius: 0.25, distanceExponent: 1.0, scale: 1.0, samples: 16 });
+    this.gtao.updateGtaoMaterial({
+      radius: 0.25,
+      distanceExponent: 1.0,
+      scale: 1.0,
+      samples: 16,
+    });
     this.composer.addPass(this.gtao);
 
     // Subtle: only genuine HDR highlights (>~1.0 luminance) bloom, so the lit
@@ -401,7 +448,9 @@ class ShellViewer extends HTMLElement {
     if (this._mode === "hq" && this.pathTracer) {
       this.pathTracer.renderSample();
       this.dispatchEvent(
-        new CustomEvent("hq-progress", { detail: { samples: Math.floor(this.pathTracer.samples) } })
+        new CustomEvent("hq-progress", {
+          detail: { samples: Math.floor(this.pathTracer.samples) },
+        }),
       );
     } else {
       this.composer.render();
