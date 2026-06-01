@@ -371,15 +371,27 @@ pub fn generate(p: &ShellParams) -> Mesh {
     let jittered = p.jitter > 1e-6;
     let jit = p.jitter.clamp(0.0, 1.0);
     let seed = p.seed.max(0.0) as u32;
-    // Distinct salts so the different effects are decorrelated.
-    const S_TWARP: u32 = 0x9E37_79B1;
-    const S_TWARP2: u32 = 0x85EB_CA77;
-    const S_PHIWARP: u32 = 0xC2B2_AE3D;
+    // Distinct salts so the different effects are decorrelated. Each θ-periodic
+    // feature gets its own *position* salt (irregular spacing) and *amplitude*
+    // salt (irregular height).
+    const S_AXPOS: u32 = 0x9E37_79B1; // rib axial θ-phase (spacing)
+    const S_VXPOS: u32 = 0x85EB_CA77; // varix θ-phase (spacing)
+    const S_PRPOS: u32 = 0xC2B2_AE3D; // projection θ-phase (spacing)
     const S_AXAMP: u32 = 0x27D4_EB2F;
     const S_VXAMP: u32 = 0x1656_67B1;
     const S_PRAMP: u32 = 0xD3A2_646C;
     const S_SPAMP: u32 = 0xFD70_46C5;
+    const S_PHIWARP: u32 = 0x7F4A_7C15;
     const S_COIL: u32 = 0xB55A_4F09;
+
+    // Position jitter is applied in *argument space* (`count·θ + phase`), so a
+    // fixed phase amplitude shifts every feature by the same fraction of its own
+    // spacing regardless of count — coarse varices and fine ribs alike get
+    // irregular *spacing*, not just height. `PH_POS / 2π ≈ 0.24` ⇒ ±24 % of a
+    // feature's gap at jitter 1. The amplitude/frequency are bounded so
+    // `count·θ + phase` stays monotonic (no mesh folds) down to one feature per
+    // whorl: worst-case dphase/dθ ≈ jit·PH_POS·3·freq/2π < 1 ≤ count.
+    const PH_POS: f32 = 1.5;
 
     for i in 0..theta_verts {
         let theta = total_theta * (i as f32) / (theta_steps as f32);
@@ -389,36 +401,38 @@ pub fn generate(p: &ShellParams) -> Mesh {
         let ct = theta.cos();
         let st = theta.sin();
 
-        // Per-θ seeded jitter: a slow domain-warp on θ (so features drift across
-        // whorls instead of stacking at the same angle), per-instance amplitude
-        // wobble, a φ-shift (cords meander), and a subtle coil radius wobble.
-        let mut theta_w = theta;
+        // Per-θ seeded jitter: an independent θ-phase per feature (so spacing
+        // goes irregular and features drift across whorls instead of locking to
+        // the same angle), per-instance amplitude wobble, a φ-shift (cords
+        // meander), and a subtle coil radius wobble.
         let mut radius_wob = 1.0;
         let mut ax_ampj = 1.0;
         let mut varix_ampj = 1.0;
         let mut proj_ampj = 1.0;
         let mut phi_shift = 0.0;
+        let (mut ax_ph, mut varix_ph, mut proj_ph) = (0.0f32, 0.0f32, 0.0f32);
         if jittered {
             let whorl = theta / two_pi;
-            theta_w = theta
-                + jit
-                    * 0.13
-                    * (noise1(seed ^ S_TWARP, whorl * 0.8) * 0.7
-                        + noise1(seed ^ S_TWARP2, whorl * 2.3) * 0.3);
-            radius_wob = 1.0 + jit * 0.025 * noise1(seed ^ S_COIL, whorl * 1.1 + 11.0);
-            ax_ampj = 1.0 + jit * 0.35 * rand_signed(seed ^ S_AXAMP, (p.rib_ax_count * whorl).round() as i32);
-            varix_ampj = 1.0 + jit * 0.5 * rand_signed(seed ^ S_VXAMP, (p.varix_count * whorl).round() as i32);
-            proj_ampj = 1.0 + jit * 0.45 * rand_signed(seed ^ S_PRAMP, (p.proj_count * whorl).round() as i32);
-            phi_shift = jit * 0.08 * noise1(seed ^ S_PHIWARP, theta * 0.4);
+            // Smooth, bounded θ-phase (argument-space) → irregular feature spacing.
+            let phase = |salt: u32, freq: f32| jit * PH_POS * noise1(seed ^ salt, whorl * freq);
+            ax_ph = phase(S_AXPOS, 1.0);
+            varix_ph = phase(S_VXPOS, 0.85);
+            proj_ph = phase(S_PRPOS, 0.95);
+            radius_wob = 1.0 + jit * 0.04 * noise1(seed ^ S_COIL, whorl * 1.1 + 11.0);
+            ax_ampj = 1.0 + jit * 0.5 * rand_signed(seed ^ S_AXAMP, (p.rib_ax_count * whorl).round() as i32);
+            varix_ampj = 1.0 + jit * 0.7 * rand_signed(seed ^ S_VXAMP, (p.varix_count * whorl).round() as i32);
+            proj_ampj = 1.0 + jit * 0.6 * rand_signed(seed ^ S_PRAMP, (p.proj_count * whorl).round() as i32);
+            phi_shift = jit * 0.12 * noise1(seed ^ S_PHIWARP, theta * 0.4);
         }
 
         let radius = (ap_r / (1.0 - d)) * radius_wob; // axis → centre, with coil wobble
         let cz = p.t * radius; // centre height: ∝ radius gives the conical spire
 
-        // θ-only ornament terms (warped angle → features don't lock per whorl).
-        let axial = p.rib_ax_amp * ax_ampj * ribbed(p.rib_ax_count * theta_w, sharp);
-        let varix = p.varix_amp * varix_ampj * lobe(p.varix_count * theta_w, VARIX_POWER);
-        let proj_theta = lobe(p.proj_count * theta_w, proj_power);
+        // θ-only ornament terms (per-feature phase → irregular spacing, and
+        // features don't lock to the same angle every whorl).
+        let axial = p.rib_ax_amp * ax_ampj * ribbed(p.rib_ax_count * theta + ax_ph, sharp);
+        let varix = p.varix_amp * varix_ampj * lobe(p.varix_count * theta + varix_ph, VARIX_POWER);
+        let proj_theta = lobe(p.proj_count * theta + proj_ph, proj_power);
 
         let u = i as f32 / theta_steps as f32; // 0..1 along the coil
 
@@ -427,7 +441,7 @@ pub fn generate(p: &ShellParams) -> Mesh {
             let phi_o = phi + phi_shift; // warped φ for ornament placement
             // Spiral cords: continuous along the coil → longitudinal cords.
             let cord_ampj = if jittered {
-                1.0 + jit * 0.3 * rand_signed(seed ^ S_SPAMP, (p.rib_sp_count * phi / two_pi).round() as i32)
+                1.0 + jit * 0.45 * rand_signed(seed ^ S_SPAMP, (p.rib_sp_count * phi / two_pi).round() as i32)
             } else {
                 1.0
             };
@@ -762,6 +776,53 @@ mod tests {
             a.positions.iter().zip(&uniform.positions).any(|(x, y)| (x - y).abs() > 1e-5),
             "jitter should perturb the surface vs the uniform shape"
         );
+    }
+
+    #[test]
+    fn seed_visibly_changes_spacing_not_just_height() {
+        // Regression: at jitter=1 two seeds must differ *substantially* (irregular
+        // spacing, not a cosmetic global rotation). Measured ~0.08 max displacement
+        // with ~89% of vertices moving; assert well below that so it can't silently
+        // regress to the old amplitude-only level. Topology is seed-independent, so
+        // the vertex arrays line up element-wise.
+        let base = ShellParams { varix_count: 4.0, varix_amp: 0.3, jitter: 1.0, ..ShellParams::default() };
+        let a = generate(&ShellParams { seed: 1.0, ..base.clone() });
+        let b = generate(&ShellParams { seed: 2.0, ..base.clone() });
+        assert_eq!(a.positions.len(), b.positions.len(), "seed must not change topology");
+        let n = a.positions.len() / 3;
+        let disp = |i: usize| -> f32 {
+            ((a.positions[i * 3] - b.positions[i * 3]).powi(2)
+                + (a.positions[i * 3 + 1] - b.positions[i * 3 + 1]).powi(2)
+                + (a.positions[i * 3 + 2] - b.positions[i * 3 + 2]).powi(2))
+            .sqrt()
+        };
+        let max_disp = (0..n).map(disp).fold(0.0f32, f32::max);
+        let moved = (0..n).filter(|&i| disp(i) > 0.01).count();
+        assert!(max_disp > 0.03, "seeds barely differ (max disp {max_disp}) — jitter too weak");
+        assert!(
+            moved * 100 / n >= 40,
+            "only {}% of vertices moved between seeds — spacing not randomized",
+            moved * 100 / n
+        );
+        assert!(b.positions.iter().all(|x| x.is_finite()));
+    }
+
+    #[test]
+    fn low_count_varices_do_not_fold_under_max_jitter() {
+        // The argument-space phase bound (PH_POS) must keep `count·θ + phase`
+        // monotonic even at one feature per whorl, so the swept tube never folds
+        // back on itself (which would make a self-intersecting, NaN-free but
+        // broken mesh). Smoke test the tightest case stays finite and bounded.
+        for &count in &[1.0, 2.0, 3.0] {
+            let m = generate(&ShellParams {
+                varix_count: count,
+                varix_amp: 0.5,
+                jitter: 1.0,
+                seed: 7.0,
+                ..ShellParams::default()
+            });
+            assert!(m.positions.iter().all(|x| x.is_finite() && x.abs() <= 1.001), "count {count} unbounded/NaN");
+        }
     }
 
     #[test]
