@@ -14,16 +14,84 @@
         color: #d8dee9;
         height: 100vh;
         display: grid;
-        grid-template-columns: 300px 1fr;
+        grid-template-columns: 300px 1fr 250px;
+        grid-template-rows: auto 1fr; /* title bar, then the three columns */
       }
+      /* Full-width title bar across the top of all three columns. Holds the app
+         name + tagline so they stay put while the panels below scroll. */
+      header.titlebar {
+        grid-column: 1 / -1;
+        display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
+        padding: 12px 20px;
+        border-bottom: 1px solid #20262e;
+      }
+      header.titlebar h1 { margin: 0; }
+      header.titlebar .sub { margin: 0; }
       aside {
         padding: 20px;
         border-right: 1px solid #20262e;
         overflow-y: auto;
       }
+      /* Right column: species browser (top) + appearance controls (bottom). */
+      aside.right {
+        padding: 0; border-right: none; border-left: 1px solid #20262e;
+        overflow: hidden; display: flex; flex-direction: column;
+      }
+      aside.right .pane { padding: 0 12px 14px; overflow-y: auto; }
+      .species-pane { flex: 1 1 54%; }
+      .appearance-pane { flex: 1 1 46%; border-top: 1px solid #20262e; }
+      /* Sticky pane title: pins to the top of its own scroll area (opaque bg so the
+         list slides underneath). Top padding lives on the heading so it sits flush. */
+      aside.right h2 {
+        font-size: 11px; text-transform: uppercase; letter-spacing: .08em;
+        color: #c8a35a; margin: 0 0 12px;
+        position: sticky; top: 0; z-index: 1;
+        padding: 14px 0 8px; background: #0e1116;
+      }
+      ul.species-list { list-style: none; margin: 0; padding: 0;
+        display: flex; flex-direction: column; gap: 6px; }
+      .species-item {
+        display: flex; align-items: center; gap: 10px; padding: 6px;
+        border: 1px solid transparent; border-radius: 8px; cursor: pointer;
+      }
+      .species-item:hover { background: #141a21; border-color: #232b35; }
+      .species-item.active { background: #1a212b; border-color: #c8a35a; }
+      .species-thumb {
+        width: 50px; height: 50px; flex: none; border-radius: 6px;
+        background: #10151c; object-fit: contain;
+      }
+      .species-name { display: flex; flex-direction: column; line-height: 1.25; min-width: 0; }
+      .species-sci { font-style: italic; color: #e7d8b6; font-size: 12.5px; }
+      .species-common { color: #8b97a8; font-size: 11px; }
+
+      /* Appearance controls. */
+      .field-label { font-size: 12px; color: #aeb9c9; margin: 14px 0 6px; }
+      .field-label.first { margin-top: 0; }
+      .mode-group { display: flex; gap: 6px; }
+      .mode-btn {
+        flex: 1; height: 38px; display: flex; align-items: center; justify-content: center;
+        background: #161b22; color: #8b97a8; border: 1px solid #2a313b;
+        border-radius: 6px; cursor: pointer;
+      }
+      .mode-btn:hover { color: #d8dee9; border-color: #3a434f; }
+      .mode-btn.active { color: #e7d8b6; border-color: #c8a35a; background: #1a212b; }
+      .mode-btn svg { display: block; }
+      .swatches { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; }
+      .swatch-btn {
+        width: 22px; height: 22px; padding: 0; border-radius: 50%;
+        border: 2px solid #2a313b; cursor: pointer;
+      }
+      .swatch-btn:hover { border-color: #6b7686; }
+      .swatch-btn.active { border-color: #c8a35a; box-shadow: 0 0 0 2px rgba(200,163,90,.3); }
+      input[type="color"].swatch-custom {
+        width: 24px; height: 24px; padding: 0; cursor: pointer;
+        background: none; border: 1px dashed #6b7686; border-radius: 6px;
+      }
+      input[type="color"].swatch-custom::-webkit-color-swatch-wrapper { padding: 1px; }
+      input[type="color"].swatch-custom::-webkit-color-swatch { border: none; border-radius: 4px; }
       h1 { font-size: 16px; margin: 0 0 4px; letter-spacing: .02em; }
       p.sub { margin: 0 0 20px; color: #8b97a8; font-size: 12px; }
-      label { display: block; margin: 16px 0 4px; font-size: 12px; color: #aeb9c9; }
+      label { display: block; margin: 14px 0 4px; font-size: 12px; color: #aeb9c9; }
       .row { display: flex; align-items: center; gap: 10px; }
       input[type="range"] { flex: 1; accent-color: #c8a35a; }
       output { width: 44px; text-align: right; font-variant-numeric: tabular-nums; color: #e7d8b6; }
@@ -32,8 +100,44 @@
         background: #161b22; color: #d8dee9; border: 1px solid #2a313b; border-radius: 6px;
       }
       shell-viewer { width: 100%; height: 100%; }
-      .section { margin: 22px 0 2px; font-size: 11px; text-transform: uppercase;
-        letter-spacing: .08em; color: #c8a35a; border-top: 1px solid #20262e; padding-top: 14px; }
+
+      /* Collapsible parameter groups (native <details>, styled like the old
+         section headers with a disclosure triangle). */
+      /* Each group is a boxed card on a slightly raised background, so its
+         controls clearly read as belonging to the group. */
+      details {
+        background: #141a21;
+        border: 1px solid #232b35;
+        border-radius: 8px;
+        margin: 0 0 10px;
+        padding: 0 12px;
+      }
+      summary {
+        list-style: none; cursor: pointer; padding: 12px 0;
+        font-size: 11px; text-transform: uppercase; letter-spacing: .08em;
+        color: #c8a35a; display: flex; align-items: center; gap: 7px; user-select: none;
+      }
+      details[open] { padding-bottom: 12px; }
+      details[open] > summary { padding-bottom: 6px; }
+      summary::-webkit-details-marker { display: none; }
+      summary::before { content: "▸"; font-size: 9px; transition: transform .15s ease; }
+      details[open] > summary::before { transform: rotate(90deg); }
+      summary + label { margin-top: 8px; }
+      /* Nested subgroups (inside Ornamentation): a recessed inner card. */
+      details.sub {
+        background: #10151c;
+        border: 1px solid #1c232c;
+        border-radius: 6px;
+        margin: 10px 0 0;
+        padding: 0 10px;
+      }
+      details.sub[open] { padding-bottom: 10px; }
+      details.sub > summary { padding: 9px 0; font-size: 11px;
+        text-transform: none; letter-spacing: .02em; color: #9aa7b8; }
+      details.sub[open] > summary { padding-bottom: 2px; }
+      .subhead { margin: 14px 0 0; font-size: 11px; color: #8b97a8; letter-spacing: .03em; }
+      .hint { color: #6b7686; cursor: help; font-size: 11px; }
+
       .dice { margin-top: 10px; width: 100%; padding: 8px; cursor: pointer;
         background: #161b22; color: #d8dee9; border: 1px solid #2a313b; border-radius: 6px; }
       .dice:hover { border-color: #c8a35a; color: #e7d8b6; }
@@ -45,176 +149,197 @@
     </style>
   </head>
   <body>
-    <aside>
+    <header class="titlebar">
       <h1>Spiral</h1>
       <p class="sub">Logarithmic helico-spiral shell generator (Rust → WASM).</p>
+    </header>
 
-      <label for="preset">Preset</label>
-      <select id="preset"></select>
-
-      <form id="controls">
-        <label>Whorl expansion <code>W</code><div class="row">
-          <input name="w" type="range" min="1.05" max="6" step="0.01" value="2.0" />
-          <output id="val-w">2.0</output></div></label>
-
-        <label>Openness <code>D</code><div class="row">
-          <input name="d" type="range" min="0" max="0.9" step="0.01" value="0.15" />
-          <output id="val-d">0.15</output></div></label>
-
-        <label>Translation <code>T</code><div class="row">
-          <input name="t" type="range" min="0" max="12" step="0.01" value="1.5" />
-          <output id="val-t">1.5</output></div></label>
-
-        <label>Whorls <code>n</code><div class="row">
-          <input name="n" type="range" min="0.5" max="14" step="0.1" value="5" />
-          <output id="val-n">5.0</output></div></label>
-
-        <label>Aperture aspect<div class="row">
-          <input name="aspect" type="range" min="0.3" max="3" step="0.01" value="1.0" />
-          <output id="val-aspect">1.0</output></div></label>
-
-        <div class="section">Ornamentation</div>
-
-        <label>Axial ribs / waves<div class="row">
-          <input name="rib_ax_count" type="range" min="0" max="40" step="1" value="0" />
-          <output id="val-rib_ax_count">0</output></div></label>
-
-        <label>Axial amplitude<div class="row">
-          <input name="rib_ax_amp" type="range" min="0" max="0.6" step="0.01" value="0" />
-          <output id="val-rib_ax_amp">0.00</output></div></label>
-
-        <label>Spiral cords<div class="row">
-          <input name="rib_sp_count" type="range" min="0" max="30" step="1" value="0" />
-          <output id="val-rib_sp_count">0</output></div></label>
-
-        <label>Spiral amplitude<div class="row">
-          <input name="rib_sp_amp" type="range" min="0" max="0.6" step="0.01" value="0" />
-          <output id="val-rib_sp_amp">0.00</output></div></label>
-
-        <label>Profile (wave → ridge)<div class="row">
-          <input name="rib_sharp" type="range" min="0" max="1" step="0.01" value="0" />
-          <output id="val-rib_sharp">0.00</output></div></label>
-
-        <div class="section">Projections (nodules → spines)</div>
-
-        <label>Projections / whorl<div class="row">
-          <input name="proj_count" type="range" min="0" max="20" step="1" value="0" />
-          <output id="val-proj_count">0</output></div></label>
-
-        <label>Rows around aperture<div class="row">
-          <input name="proj_rows" type="range" min="0" max="5" step="1" value="0" />
-          <output id="val-proj_rows">0</output></div></label>
-
-        <label>Row position (φ)<div class="row">
-          <input name="proj_pos" type="range" min="0" max="6.28" step="0.01" value="0" />
-          <output id="val-proj_pos">0.00</output></div></label>
-
-        <label>Size<div class="row">
-          <input name="proj_size" type="range" min="0" max="1.2" step="0.01" value="0" />
-          <output id="val-proj_size">0.00</output></div></label>
-
-        <label>Sharpness (bead → needle)<div class="row">
-          <input name="proj_sharp" type="range" min="0" max="1" step="0.01" value="0" />
-          <output id="val-proj_sharp">0.00</output></div></label>
-
-        <div class="section">Varices</div>
-
-        <label>Varices / whorl<div class="row">
-          <input name="varix_count" type="range" min="0" max="6" step="1" value="0" />
-          <output id="val-varix_count">0</output></div></label>
-
-        <label>Varix prominence<div class="row">
-          <input name="varix_amp" type="range" min="0" max="0.5" step="0.01" value="0" />
-          <output id="val-varix_amp">0.00</output></div></label>
-
-        <div class="section">Randomness</div>
-
-        <label>Jitter<div class="row">
-          <input name="jitter" type="range" min="0" max="1" step="0.01" value="0" />
-          <output id="val-jitter">0.00</output></div></label>
-
-        <label>Seed<div class="row">
-          <input name="seed" type="range" min="0" max="9999" step="1" value="0" />
-          <output id="val-seed">0</output></div></label>
-
-        <button type="button" id="dice" class="dice">🎲 Random seed</button>
-
-        <div class="section">Material</div>
-
-        <label>Base colour<div class="row">
-          <input name="matcolor" type="color" value="#e7d8b6" class="swatch" />
-        </div></label>
-
-        <label>Roughness<div class="row">
-          <input name="roughness" type="range" min="0" max="1" step="0.01" value="0.3" />
-          <output id="val-roughness">0.30</output></div></label>
-
-        <label>Clearcoat<div class="row">
-          <input name="clearcoat" type="range" min="0" max="1" step="0.01" value="0.55" />
-          <output id="val-clearcoat">0.55</output></div></label>
-
-        <label>Translucency<div class="row">
-          <input name="transmission" type="range" min="0" max="1" step="0.01" value="0" />
-          <output id="val-transmission">0.00</output></div></label>
-
-        <label>Iridescence<div class="row">
-          <input name="iridescence" type="range" min="0" max="1" step="0.01" value="0" />
-          <output id="val-iridescence">0.00</output></div></label>
-      </form>
-
-      <div class="section">Render</div>
-      <button type="button" id="render" class="dice">▶ Render (path trace)</button>
-      <button type="button" id="savepng" class="dice">⬇ Save PNG</button>
-      <div id="rstatus" class="rstatus"></div>
+    <aside>
+      <!-- All controls are generated from the config below in buildControls();
+           slider ranges come from the Rust param_ranges() table. -->
+      <form id="controls"></form>
 
       <footer>Drag to orbit · scroll to zoom.</footer>
     </aside>
 
     <shell-viewer id="viewer"></shell-viewer>
 
+    <aside class="right">
+      <section class="pane species-pane">
+        <h2>Species</h2>
+        <ul id="species-list" class="species-list"></ul>
+      </section>
+      <section class="pane appearance-pane">
+        <h2>Appearance</h2>
+        <div id="appearance"></div>
+      </section>
+    </aside>
+
     <script type="module">
       import "./shell-viewer.js";
 
       const viewer = document.getElementById("viewer");
       const form = document.getElementById("controls");
-      // FIELDS / INTS are populated from the Rust range table in initRanges();
-      // these initial values are a fallback if the wasm load fails. They (and
-      // the slider min/max/step in the HTML above) are only a fallback — the
-      // single source of truth is PARAM_RANGES in crates/shell-core.
-      let FIELDS = [
-        "w", "d", "t", "n", "aspect",
-        "rib_ax_count", "rib_ax_amp", "rib_sp_count", "rib_sp_amp", "rib_sharp",
-        "proj_count", "proj_rows", "proj_pos", "proj_size", "proj_sharp",
-        "varix_count", "varix_amp",
-        "seed", "jitter",
-      ];
-      let INTS = new Set([
-        "rib_ax_count", "rib_sp_count", "proj_count", "proj_rows", "varix_count", "seed",
-      ]);
+      const appearance = document.getElementById("appearance");
 
-      // Pull the authoritative ranges from Rust (via wasm) and apply them to the
-      // sliders, so min/max/step/default and integer formatting all come from
-      // one place. Falls back silently to the HTML-defined attributes on error.
-      async function initRanges() {
-        let ranges;
-        try {
-          ranges = await viewer.paramRanges();
-        } catch (e) {
-          console.warn("param_ranges() unavailable; using HTML fallback ranges", e);
-          return;
-        }
-        FIELDS = ranges.map((r) => r.key);
-        INTS = new Set(ranges.filter((r) => r.integer).map((r) => r.key));
-        for (const r of ranges) {
-          const el = form.elements[r.key];
-          if (!el) continue; // material fields aren't shape params
-          el.min = r.min;
-          el.max = r.max;
-          el.step = Number(r.step.toPrecision(4)); // avoid f32 round-trip noise
-          el.value = r.default;
-        }
+      // ---- Friendly labels -------------------------------------------------
+      // Plain-language label + a hover hint that keeps the scientific term
+      // (Raup W/D/T, φ, …) discoverable. Maps shape-param key → copy. The slider
+      // min/max/step/default still come from the Rust param_ranges() table.
+      const LABELS = {
+        w:      { label: "Whorl growth",    hint: "Raup W — how fast each turn widens (slender ↔ fat)" },
+        d:      { label: "Coil openness",   hint: "Raup D — distance from the coiling axis (tight ↔ open)" },
+        t:      { label: "Spire height",    hint: "Raup T — axial rise per turn (flat ↔ tall)" },
+        n:      { label: "Number of turns", hint: "n — total whorls / revolutions" },
+        aspect: { label: "Opening shape",   hint: "Aperture aspect — cross-section (tall ↔ round ↔ wide)" },
+        rib_ax_count: { label: "Ribs per turn",  hint: "Axial ribs / waves crossing each whorl" },
+        rib_ax_amp:   { label: "Rib height",     hint: "Axial rib amplitude (fraction of tube radius)" },
+        rib_sp_count: { label: "Spiral cords",   hint: "Cords running along the coil" },
+        rib_sp_amp:   { label: "Cord height",    hint: "Spiral cord amplitude" },
+        rib_sharp:    { label: "Rib profile",    hint: "Rounded wave ↔ sharp ridge" },
+        proj_count:   { label: "Bumps per turn", hint: "Projections per whorl" },
+        proj_rows:    { label: "Rows of bumps",  hint: "1 = single row (spine-like), ≥2 = nodular rows" },
+        proj_pos:     { label: "Bump placement", hint: "Row position φ (0–2π around the opening)" },
+        proj_size:    { label: "Bump size",      hint: "Projection length (fraction of tube radius)" },
+        proj_sharp:   { label: "Bump shape",     hint: "Rounded bead ↔ sharp spine" },
+        varix_count:  { label: "Flared ridges per turn", hint: "Varices — growth-pause ridges (Murex / frog shells)" },
+        varix_amp:    { label: "Ridge prominence",       hint: "Varix amplitude" },
+        jitter:       { label: "Irregularity",   hint: "Random variation amount (uniform ↔ chaotic)" },
+        seed:         { label: "Variation seed", hint: "Same seed + params → identical shell" },
+      };
+
+      // ---- Grouping --------------------------------------------------------
+      // Top-level collapsible groups for the shape parameters. The "Appearance"
+      // group (render mode + material) is built separately below.
+      const GROUPS = [
+        { id: "shape", title: "Shape", open: true, params: ["w", "d", "t", "n", "aspect"] },
+        {
+          id: "orn", title: "Ornamentation", open: false,
+          subgroups: [
+            { title: "Ribs & cords",   params: ["rib_ax_count", "rib_ax_amp", "rib_sp_count", "rib_sp_amp", "rib_sharp"] },
+            { title: "Bumps & spines", params: ["proj_count", "proj_rows", "proj_pos", "proj_size", "proj_sharp"] },
+            { title: "Flared ridges",  params: ["varix_count", "varix_amp"] },
+            { title: "Randomness",     params: ["jitter", "seed"], dice: true },
+          ],
+        },
+      ];
+
+      // Appearance controls are viewer-side (not Rust shape params), so their
+      // ranges/defaults live here. Updating these reskins without regenerating.
+      const MATERIAL = [
+        { key: "roughness",    label: "Roughness",    hint: "Matte ↔ glossy",                 min: 0, max: 1, step: 0.01, value: 0.3 },
+        { key: "clearcoat",    label: "Gloss coat",   hint: "Clear glossy top layer (live view only)", min: 0, max: 1, step: 0.01, value: 0.55 },
+        { key: "transmission", label: "Translucency", hint: "Glass-like transparency",         min: 0, max: 1, step: 0.01, value: 0 },
+        { key: "iridescence",  label: "Iridescence",  hint: "Thin-film colour shift (nacre / pearl)", min: 0, max: 1, step: 0.01, value: 0 },
+      ];
+      const MAT_RANGES = MATERIAL.map((m) => m.key);
+      const DEFAULT_COLOR = "#e7d8b6";
+
+      // Display modes as small icon buttons (filled sphere / wire globe / both).
+      const ICON = {
+        solid: `<svg viewBox="0 0 24 24" width="22" height="22"><circle cx="12" cy="12" r="8" fill="currentColor"/></svg>`,
+        wireframe: `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="12" cy="12" r="8"/><ellipse cx="12" cy="12" rx="8" ry="3.2"/><ellipse cx="12" cy="12" rx="3.2" ry="8"/></svg>`,
+        "solid+wireframe": `<svg viewBox="0 0 24 24" width="22" height="22"><circle cx="12" cy="12" r="8" fill="currentColor" opacity="0.4"/><g fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="12" cy="12" r="8"/><ellipse cx="12" cy="12" rx="8" ry="3.2"/><ellipse cx="12" cy="12" rx="3.2" ry="8"/></g></svg>`,
+      };
+      const DISPLAY_MODES = [
+        { mode: "solid", label: "Solid" },
+        { mode: "wireframe", label: "Wireframe" },
+        { mode: "solid+wireframe", label: "Solid + wireframe" },
+      ];
+      // A palette of natural shell colours, plus a custom picker.
+      const SWATCHES = [
+        "#e7d8b6", "#f4ede1", "#dcb98f", "#c98a5e", "#a9744f",
+        "#7c5230", "#e3b079", "#d7dcdb", "#b7c3bd", "#e8b6a4",
+      ];
+
+      // Fallback ranges, used ONLY if param_ranges() is unavailable (offline /
+      // wasm load failure) so the panel still renders. The authoritative source
+      // is PARAM_RANGES in crates/shell-core.
+      const FALLBACK_RANGES = [
+        { key: "w",      min: 1.05, max: 8.0,  step: 0.01, default: 2.0,  integer: false },
+        { key: "d",      min: 0.0,  max: 0.95, step: 0.01, default: 0.15, integer: false },
+        { key: "t",      min: 0.0,  max: 12.0, step: 0.01, default: 1.5,  integer: false },
+        { key: "n",      min: 0.5,  max: 20.0, step: 0.1,  default: 5.0,  integer: false },
+        { key: "aspect", min: 0.3,  max: 4.0,  step: 0.01, default: 1.0,  integer: false },
+        { key: "rib_ax_count", min: 0, max: 40, step: 1,    default: 0, integer: true },
+        { key: "rib_ax_amp",   min: 0, max: 0.6, step: 0.01, default: 0, integer: false },
+        { key: "rib_sp_count", min: 0, max: 60, step: 1,    default: 0, integer: true },
+        { key: "rib_sp_amp",   min: 0, max: 0.6, step: 0.01, default: 0, integer: false },
+        { key: "rib_sharp",    min: 0, max: 1,  step: 0.01, default: 0, integer: false },
+        { key: "proj_count",   min: 0, max: 30, step: 1,    default: 0, integer: true },
+        { key: "proj_rows",    min: 0, max: 5,  step: 1,    default: 0, integer: true },
+        { key: "proj_pos",     min: 0, max: 6.2832, step: 0.01, default: 0, integer: false },
+        { key: "proj_size",    min: 0, max: 1.2, step: 0.01, default: 0, integer: false },
+        { key: "proj_sharp",   min: 0, max: 1,  step: 0.01, default: 0, integer: false },
+        { key: "varix_count",  min: 0, max: 6,  step: 1,    default: 0, integer: true },
+        { key: "varix_amp",    min: 0, max: 0.5, step: 0.01, default: 0, integer: false },
+        { key: "seed",         min: 0, max: 9999, step: 1,  default: 0, integer: true },
+        { key: "jitter",       min: 0, max: 1,  step: 0.01, default: 0, integer: false },
+      ];
+
+      // Populated from the range table in initRanges() (fallback values here).
+      let FIELDS = FALLBACK_RANGES.map((r) => r.key);
+      let INTS = new Set(FALLBACK_RANGES.filter((r) => r.integer).map((r) => r.key));
+
+      // ---- Markup builders -------------------------------------------------
+      const stepStr = (s) => Number(s.toPrecision(4)); // avoid f32 round-trip noise
+      const hintSpan = (h) => (h ? ` <span class="hint" title="${h}">ⓘ</span>` : "");
+
+      function rangeRow(key, r) {
+        const m = LABELS[key] || { label: key };
+        return `<label>${m.label}${hintSpan(m.hint)}<div class="row">
+          <input name="${key}" type="range" min="${r.min}" max="${r.max}" step="${stepStr(r.step)}" value="${r.default}" />
+          <output id="val-${key}"></output></div></label>`;
       }
 
+      // Build the Appearance panel (right column, lower half): display-mode icons,
+      // a colour palette + custom picker, the material sliders, and photo render.
+      function buildAppearance() {
+        const sliders = MATERIAL.map((m) =>
+          `<label>${m.label}${hintSpan(m.hint)}<div class="row">
+            <input id="mat-${m.key}" type="range" min="${m.min}" max="${m.max}" step="${m.step}" value="${m.value}" />
+            <output id="val-${m.key}"></output></div></label>`).join("");
+        appearance.innerHTML = `
+          <div class="field-label first">Display mode</div>
+          <div class="mode-group" id="rendermode">
+            ${DISPLAY_MODES.map((d, i) =>
+              `<button type="button" class="mode-btn${i === 0 ? " active" : ""}" data-mode="${d.mode}" title="${d.label}" aria-label="${d.label}">${ICON[d.mode]}</button>`).join("")}
+          </div>
+          <div class="field-label">Base colour</div>
+          <div class="swatches" id="swatches">
+            ${SWATCHES.map((c, i) =>
+              `<button type="button" class="swatch-btn${i === 0 ? " active" : ""}" data-color="${c}" title="${c}" style="background:${c}"></button>`).join("")}
+            <input id="mat-color" type="color" class="swatch-custom" value="${DEFAULT_COLOR}" title="Custom colour" />
+          </div>
+          ${sliders}
+          <div class="subhead">Photo render</div>
+          <button type="button" id="render" class="dice">▶ Render (path trace)</button>
+          <button type="button" id="savepng" class="dice">⬇ Save PNG</button>
+          <div id="rstatus" class="rstatus"></div>`;
+      }
+
+      // Build the whole control panel from GROUPS + the range table, then the
+      // Appearance group (render mode + material + photo render).
+      function buildControls(rangeMap) {
+        let html = "";
+        for (const g of GROUPS) {
+          html += `<details${g.open ? " open" : ""}><summary>${g.title}</summary>`;
+          if (g.params) {
+            html += g.params.map((k) => rangeRow(k, rangeMap[k])).join("");
+          }
+          for (const sg of g.subgroups || []) {
+            html += `<details class="sub"${sg.open === false ? "" : " open"}><summary>${sg.title}</summary>`;
+            html += sg.params.map((k) => rangeRow(k, rangeMap[k])).join("");
+            if (sg.dice) html += `<button type="button" id="dice" class="dice">🎲 Random seed</button>`;
+            html += `</details>`;
+          }
+          html += `</details>`;
+        }
+        form.innerHTML = html; // Shape + Ornamentation only; Appearance is built
+        // separately into the right column (see buildAppearance).
+      }
+
+      // ---- Value plumbing --------------------------------------------------
       const readForm = () =>
         Object.fromEntries(FIELDS.map((f) => [f, parseFloat(form.elements[f].value)]));
 
@@ -231,99 +356,178 @@
         timer = setTimeout(() => viewer.setParams(readForm()), 30);
       }
 
-      // Material controls update the look without regenerating geometry.
-      const MAT_RANGES = ["roughness", "clearcoat", "transmission", "iridescence"];
-      const MAT_SET = new Set([...MAT_RANGES, "matcolor"]);
+      // Material/appearance controls update the look without regenerating geometry.
+      let matColor = DEFAULT_COLOR;
       function updateMaterial() {
+        const patch = { color: parseInt(matColor.slice(1), 16) };
         for (const f of MAT_RANGES) {
+          const el = document.getElementById("mat-" + f);
+          if (!el) continue;
+          const v = parseFloat(el.value);
+          patch[f] = v;
           const out = document.getElementById("val-" + f);
-          if (out) out.textContent = parseFloat(form.elements[f].value).toFixed(2);
+          if (out) out.textContent = v.toFixed(2);
         }
-        viewer.setMaterial({
-          ...Object.fromEntries(MAT_RANGES.map((f) => [f, parseFloat(form.elements[f].value)])),
-          color: parseInt(form.elements["matcolor"].value.slice(1), 16),
-        });
+        viewer.setMaterial(patch);
       }
 
-      form.addEventListener("input", (e) => {
-        if (MAT_SET.has(e.target.name)) updateMaterial();
-        else update();
-      });
-
-      const PRESETS = {
-        "Snail (default)":        { w: 2.0, d: 0.15, t: 1.5,  n: 5,  aspect: 1.0 },
-        "Nautilus (planispiral)": { w: 3.0, d: 0.10, t: 0.0,  n: 4,  aspect: 1.0 },
-        "Auger (high spire)":     { w: 1.5, d: 0.00, t: 10.0, n: 9,  aspect: 0.5 },
-        "Globe snail":            { w: 2.6, d: 0.20, t: 0.8,  n: 4,  aspect: 1.2 },
-        "Open coil (sundial)":    { w: 1.6, d: 0.60, t: 0.3,  n: 6,  aspect: 1.0 },
-        "Cancellaria (cancellate)": {
-          w: 1.9, d: 0.12, t: 2.0, n: 6, aspect: 0.85,
-          rib_ax_count: 14, rib_ax_amp: 0.07, rib_sp_count: 11, rib_sp_amp: 0.05, rib_sharp: 0.35,
-        },
-        "Wavy planispiral": {
-          w: 2.6, d: 0.12, t: 0.0, n: 4, aspect: 1.0,
-          rib_ax_count: 9, rib_ax_amp: 0.16, rib_sharp: 0.0,
-        },
-        "Ribbed spire": {
-          w: 1.7, d: 0.06, t: 4.0, n: 8, aspect: 0.6,
-          rib_ax_count: 15, rib_ax_amp: 0.08, rib_sharp: 0.6,
-        },
-        "Murex (spines)": {
-          w: 1.9, d: 0.10, t: 1.8, n: 6, aspect: 0.8,
-          proj_count: 8, proj_rows: 1, proj_pos: 1.1, proj_size: 0.7, proj_sharp: 0.75,
-        },
-        "Tuberculate (nodules)": {
-          w: 1.8, d: 0.10, t: 2.2, n: 6, aspect: 0.85,
-          proj_count: 12, proj_rows: 2, proj_pos: 0.6, proj_size: 0.12, proj_sharp: 0.15,
-        },
-        "Varices (frog shell)": {
-          w: 2.0, d: 0.12, t: 1.6, n: 6, aspect: 0.85,
-          varix_count: 3, varix_amp: 0.28,
-        },
-      };
-      const preset = document.getElementById("preset");
-      for (const name of Object.keys(PRESETS)) {
-        preset.append(new Option(name, name));
+      // Display mode (icon buttons) + base colour (swatches / custom picker).
+      function setMode(mode) {
+        for (const b of document.querySelectorAll(".mode-btn"))
+          b.classList.toggle("active", b.dataset.mode === mode);
+        viewer.setRenderMode(mode);
       }
-      preset.addEventListener("change", () => {
-        const p = PRESETS[preset.value];
-        if (!p) return;
-        for (const f of FIELDS) form.elements[f].value = p[f] ?? 0; // unset ornament → 0
+      function setColor(hex) {
+        matColor = hex;
+        for (const b of document.querySelectorAll(".swatch-btn"))
+          b.classList.toggle("active", b.dataset.color.toLowerCase() === hex.toLowerCase());
+        const custom = document.getElementById("mat-color");
+        if (custom) custom.value = hex;
+        updateMaterial();
+      }
+
+      // ---- Species browser -------------------------------------------------
+      // Real molluscs the generator reproduces well — validated against reference
+      // photos in the harness (the 12 "good" + the excellent "silhouette" auger;
+      // species the swept-tube model can't form, e.g. cones/cowries/spider conchs,
+      // are excluded). Params come straight from harness/species.json. Clicking one
+      // loads its shape; thumbnails are rendered from the actual WASM geometry.
+      const SPECIES = [
+        { sci: "Nautilus pompilius", common: "Chambered nautilus",
+          params: { w: 3.0, d: 0.1, t: 0.0, n: 4.0, aspect: 1.0 } },
+        { sci: "Planorbis planorbis", common: "Ramshorn snail",
+          params: { w: 1.8, d: 0.25, t: 0.0, n: 4.0, aspect: 0.9 } },
+        { sci: "Spirula spirula", common: "Ram's horn squid shell",
+          params: { w: 1.8, d: 0.7, t: 0.0, n: 4.0, aspect: 1.0 } },
+        { sci: "Architectonica perspectiva", common: "Clear sundial",
+          params: { w: 1.6, d: 0.55, t: 0.85, n: 6.0, aspect: 1.0, rib_sp_count: 8, rib_sp_amp: 0.05 } },
+        { sci: "Helix pomatia", common: "Roman / Burgundy snail",
+          params: { w: 2.6, d: 0.18, t: 1.2, n: 4.5, aspect: 0.7 } },
+        { sci: "Cepaea nemoralis", common: "Grove / banded snail",
+          params: { w: 2.4, d: 0.15, t: 1.0, n: 4.5, aspect: 0.7 } },
+        { sci: "Littorina littorea", common: "Common periwinkle",
+          params: { w: 2.0, d: 0.1, t: 2.3, n: 5.5, aspect: 0.85 } },
+        { sci: "Tectus niloticus", common: "Commercial top shell",
+          params: { w: 1.6, d: 0.05, t: 2.4, n: 7.0, aspect: 0.7, rib_sp_count: 8, rib_sp_amp: 0.05 } },
+        { sci: "Turritella terebra", common: "Tower screw shell",
+          params: { w: 1.35, d: 0.0, t: 6.0, n: 13.0, aspect: 0.6,
+            rib_sp_count: 14, rib_sp_amp: 0.05, rib_sharp: 0.3 } },
+        { sci: "Cerithium nodulosum", common: "Giant knobbed cerith",
+          params: { w: 1.6, d: 0.05, t: 3.5, n: 9.0, aspect: 0.7,
+            proj_count: 12, proj_rows: 2, proj_pos: 0.6, proj_size: 0.14, proj_sharp: 0.25 } },
+        { sci: "Cancellaria reticulata", common: "Common nutmeg",
+          params: { w: 1.9, d: 0.12, t: 2.8, n: 6.0, aspect: 0.8,
+            rib_ax_count: 14, rib_ax_amp: 0.07, rib_sp_count: 11, rib_sp_amp: 0.05, rib_sharp: 0.35 } },
+        { sci: "Bursa bufonia", common: "Toad frog shell",
+          params: { w: 2.0, d: 0.12, t: 2.3, n: 6.0, aspect: 0.8, varix_count: 3, varix_amp: 0.28 } },
+        { sci: "Terebra maculata", common: "Marlin-spike auger",
+          params: { w: 1.4, d: 0.0, t: 11.0, n: 18.0, aspect: 0.7, rib_ax_count: 18, rib_ax_amp: 0.05 } },
+      ];
+
+      const speciesList = document.getElementById("species-list");
+      speciesList.innerHTML = SPECIES.map((s, i) => `
+        <li class="species-item" data-i="${i}">
+          <img class="species-thumb" alt="${s.sci}" />
+          <span class="species-name">
+            <span class="species-sci">${s.sci}</span>
+            <span class="species-common">${s.common}</span>
+          </span>
+        </li>`).join("");
+
+      function applySpecies(i) {
+        const s = SPECIES[i];
+        if (!s) return;
+        for (const f of FIELDS) form.elements[f].value = s.params[f] ?? 0; // unset → 0
         update();
+        for (const el of speciesList.children) el.classList.toggle("active", +el.dataset.i === i);
+      }
+      speciesList.addEventListener("click", (e) => {
+        const li = e.target.closest(".species-item");
+        if (li) applySpecies(+li.dataset.i);
       });
 
-      document.getElementById("dice").addEventListener("click", () => {
-        form.elements["seed"].value = Math.floor(Math.random() * 10000);
-        update();
-      });
-
-      // Path-traced "Render" mode.
-      const renderBtn = document.getElementById("render");
-      const rstatus = document.getElementById("rstatus");
-      let rendering = false;
-      renderBtn.addEventListener("click", async () => {
-        if (rendering) {
-          viewer.stopHQ();
-          rendering = false;
-          renderBtn.textContent = "▶ Render (path trace)";
-          rstatus.textContent = "";
+      // Render each species' actual geometry to a thumbnail once the wasm is ready.
+      async function loadThumbnails() {
+        let urls;
+        try {
+          urls = await viewer.makeThumbnails(SPECIES.map((s) => s.params), 128);
+        } catch (e) {
+          console.warn("thumbnails unavailable", e);
           return;
         }
-        rstatus.textContent = "starting path tracer…";
-        const ok = await viewer.renderHQ();
-        if (!ok) { rstatus.textContent = "path tracer unavailable (see console)"; return; }
-        rendering = true;
-        renderBtn.textContent = "■ Stop";
-      });
-      viewer.addEventListener("hq-progress", (e) => {
-        if (rendering) rstatus.textContent = `path-tracing… ${e.detail.samples} samples (drag to re-aim)`;
-      });
-      document.getElementById("savepng").addEventListener("click", () => viewer.saveImage("shell.png"));
+        const imgs = speciesList.querySelectorAll(".species-thumb");
+        urls.forEach((u, i) => { if (u && imgs[i]) imgs[i].src = u; });
+      }
 
-      // Configure sliders from Rust first, then push the initial values.
+      // ---- Event wiring (after the controls exist) -------------------------
+      function wireEvents() {
+        form.addEventListener("input", update); // form holds only shape params now
+
+        // Appearance: display-mode icons, colour swatches + custom, material sliders.
+        document.getElementById("rendermode").addEventListener("click", (e) => {
+          const b = e.target.closest(".mode-btn");
+          if (b) setMode(b.dataset.mode);
+        });
+        document.getElementById("swatches").addEventListener("click", (e) => {
+          const b = e.target.closest(".swatch-btn");
+          if (b) setColor(b.dataset.color);
+        });
+        document.getElementById("mat-color").addEventListener("input", (e) => setColor(e.target.value));
+        for (const f of MAT_RANGES)
+          document.getElementById("mat-" + f).addEventListener("input", updateMaterial);
+
+        document.getElementById("dice").addEventListener("click", () => {
+          form.elements["seed"].value = Math.floor(Math.random() * 10000);
+          update();
+        });
+
+        // Path-traced "Render" mode.
+        const renderBtn = document.getElementById("render");
+        const rstatus = document.getElementById("rstatus");
+        let rendering = false;
+        renderBtn.addEventListener("click", async () => {
+          if (rendering) {
+            viewer.stopHQ();
+            rendering = false;
+            renderBtn.textContent = "▶ Render (path trace)";
+            rstatus.textContent = "";
+            return;
+          }
+          rstatus.textContent = "starting path tracer…";
+          const ok = await viewer.renderHQ();
+          if (!ok) { rstatus.textContent = "path tracer unavailable (see console)"; return; }
+          rendering = true;
+          renderBtn.textContent = "■ Stop";
+        });
+        viewer.addEventListener("hq-progress", (e) => {
+          if (rendering) rstatus.textContent = `path-tracing… ${e.detail.samples} samples (drag to re-aim)`;
+        });
+        document.getElementById("savepng").addEventListener("click", () => viewer.saveImage("shell.png"));
+      }
+
+      // Pull the authoritative ranges from Rust (via wasm), build the panel from
+      // them, then push the initial values. Falls back to FALLBACK_RANGES on error.
+      async function initRanges() {
+        let ranges;
+        try {
+          ranges = await viewer.paramRanges();
+        } catch (e) {
+          console.warn("param_ranges() unavailable; using fallback ranges", e);
+          ranges = FALLBACK_RANGES;
+        }
+        FIELDS = ranges.map((r) => r.key);
+        INTS = new Set(ranges.filter((r) => r.integer).map((r) => r.key));
+        const rangeMap = Object.fromEntries(ranges.map((r) => [r.key, r]));
+        buildControls(rangeMap);
+      }
+
       initRanges().then(() => {
-        update(); // push initial geometry values (sliders now Rust-configured)
-        updateMaterial(); // push initial material values
+        buildAppearance(); // build the right-column appearance controls
+        wireEvents();
+        update();          // push initial geometry values
+        updateMaterial();  // push initial material values
+        setMode("solid");  // default display mode
+        loadThumbnails();  // fill the species browser with rendered thumbnails
       });
     </script>
   </body>
