@@ -4,3 +4,6 @@
 **/*.rs.bk
 .DS_Store
 node_modules
+
+# Generated comparison-harness output (per-species PNG renders)
+/harness/rendered/

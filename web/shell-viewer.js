@@ -7,6 +7,7 @@
 import * as THREE from "three";
 import { TrackballControls } from "three/addons/controls/TrackballControls.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+import { RGBELoader } from "three/addons/loaders/RGBELoader.js";
 import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { GTAOPass } from "three/addons/postprocessing/GTAOPass.js";
@@ -14,6 +15,10 @@ import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js"
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import init, { generate, param_ranges } from "./pkg/shell_wasm.js";
 import wasmUrl from "./pkg/shell_wasm_bg.wasm?url";
+// A real (CC0) equirectangular HDRI — drives both the IBL reflections and the
+// visible background, so the scene looks photographed rather than floating on a
+// flat colour. Swap this file to change the environment.
+import hdrUrl from "./assets/environment.hdr?url";
 
 let wasmReady;
 function ensureWasm() {
@@ -175,9 +180,10 @@ class ShellViewer extends HTMLElement {
         this.pathTracer.renderScale = 0.75; // accumulate a touch faster
         this.pathTracer.tiles.set(4, 4);
       }
-      // Light the tracer with the *same* RoomEnvironment as the live raster (the
-      // tracer auto-converts the cube map to an equirect) so the two modes match;
-      // show a soft gradient only as a backdrop, not as a light.
+      // Light the tracer with the *same* environment as the live raster — the
+      // real HDRI equirect once loaded (used directly), otherwise the built-from-
+      // RoomEnvironment cube map — so the two modes match. The background is the
+      // same environment, so the path-traced still keeps the photographed backdrop.
       this.scene.environment = this._ensureHQEnv();
       this.scene.background = this._ensureHQBg();
       this._mode = "hq";
@@ -204,6 +210,50 @@ class ShellViewer extends HTMLElement {
   }
 
   /**
+   * Load the real HDRI environment map and swap it in for both the IBL (replacing
+   * the bootstrap RoomEnvironment) and the visible background, so the shell sits
+   * in a photographed scene. The texture is equirectangular, so the path tracer
+   * can light from it directly. Falls back silently to the RoomEnvironment IBL +
+   * flat background if the asset can't be fetched (e.g. offline).
+   */
+  _loadEnvironment() {
+    new RGBELoader().load(
+      hdrUrl,
+      (hdr) => {
+        hdr.mapping = THREE.EquirectangularReflectionMapping;
+        const pmrem = new THREE.PMREMGenerator(this.renderer);
+        const prefiltered = pmrem.fromEquirectangular(hdr).texture;
+        pmrem.dispose();
+
+        this.envPMREM?.dispose?.();
+        this.envPMREM = prefiltered; // prefiltered IBL for the live raster
+        this.envEquirect = hdr; // raw equirect for the path tracer + background
+
+        // A real, visible backdrop — softened and dimmed a touch so it frames the
+        // shell rather than competing with it. Lighting still comes from the full
+        // (un-blurred) PMREM/equirect, only the displayed background is softened.
+        this.scene.backgroundBlurriness = 0.06;
+        this.scene.backgroundIntensity = 0.75;
+        this._liveBg = hdr;
+
+        // Only repaint the live scene here; if the user is already in HQ mode the
+        // tracer is rebuilt below and picks up the equirect via _ensureHQEnv/Bg.
+        if (this._mode === "live") {
+          this.scene.environment = this.envPMREM;
+          this.scene.background = this._liveBg;
+        }
+        this._resetHQ();
+      },
+      undefined,
+      (err) =>
+        console.warn(
+          "[shell-viewer] HDRI environment failed to load; keeping procedural fallback:",
+          err,
+        ),
+    );
+  }
+
+  /**
    * Render the *same* RoomEnvironment the live raster uses into a cube map, so
    * the path tracer is lit by an identical IBL (it auto-converts a CubeTexture to
    * an equirect internally). This is what makes the HQ render match the live
@@ -211,6 +261,7 @@ class ShellViewer extends HTMLElement {
    * directional key left the opposite side in shadow. Built once.
    */
   _ensureHQEnv() {
+    if (this.envEquirect) return this.envEquirect; // real HDRI: tracer uses it directly
     if (this.envHQ) return this.envHQ;
     const cubeRT = new THREE.WebGLCubeRenderTarget(256, {
       type: THREE.HalfFloatType,
@@ -232,6 +283,7 @@ class ShellViewer extends HTMLElement {
    * `_ensureHQEnv`, not this. Needs the lazily-loaded path-tracer lib.
    */
   _ensureHQBg() {
+    if (this.envEquirect) return this.envEquirect; // show the real environment behind the shell
     if (!this.envHQBg) {
       const tex = new this._ptLib.GradientEquirectTexture();
       tex.topColor.set(0xb8bfc7); // soft neutral studio sky
@@ -275,15 +327,20 @@ class ShellViewer extends HTMLElement {
     this.scene.background = new THREE.Color(0x0e1116);
     this._liveBg = this.scene.background;
 
-    // Image-based lighting from a generated studio room (zero external asset).
-    // Live raster uses the prefiltered PMREM map; the path tracer needs a raw
-    // cube/equirect env, so we lazily build a cube version for HQ mode.
+    // Image-based lighting. Bootstrap with a generated studio room (zero-asset,
+    // available instantly) so the shell is lit the moment the scene appears, then
+    // asynchronously swap in a real HDRI environment map for true-to-life
+    // reflections and a non-plain background. Live raster uses a prefiltered PMREM
+    // map; the path tracer needs a raw equirect env, which the HDRI provides
+    // directly (and we fall back to a built cube map if the HDRI never loads).
     const pmrem = new THREE.PMREMGenerator(this.renderer);
     this.envPMREM = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
     this.scene.environment = this.envPMREM;
     this.scene.environmentIntensity = 0.7; // RoomEnvironment is bright; dim the IBL
     pmrem.dispose();
+    this.envEquirect = null; // the raw HDRI, set once it loads
     this.envHQ = null;
+    this._loadEnvironment();
 
     this.camera = new THREE.PerspectiveCamera(40, w / h, 0.01, 100);
     this.camera.position.set(0.7, 1.0, 3.2); // reframed on first build
