@@ -34,6 +34,9 @@
       shell-viewer { width: 100%; height: 100%; }
       .section { margin: 22px 0 2px; font-size: 11px; text-transform: uppercase;
         letter-spacing: .08em; color: #c8a35a; border-top: 1px solid #20262e; padding-top: 14px; }
+      .dice { margin-top: 10px; width: 100%; padding: 8px; cursor: pointer;
+        background: #161b22; color: #d8dee9; border: 1px solid #2a313b; border-radius: 6px; }
+      .dice:hover { border-color: #c8a35a; color: #e7d8b6; }
       footer { margin-top: 22px; font-size: 11px; color: #6b7686; }
       code { color: #c8a35a; }
     </style>
@@ -120,6 +123,18 @@
         <label>Varix prominence<div class="row">
           <input name="varix_amp" type="range" min="0" max="0.5" step="0.01" value="0" />
           <output id="val-varix_amp">0.00</output></div></label>
+
+        <div class="section">Randomness</div>
+
+        <label>Jitter<div class="row">
+          <input name="jitter" type="range" min="0" max="1" step="0.01" value="0" />
+          <output id="val-jitter">0.00</output></div></label>
+
+        <label>Seed<div class="row">
+          <input name="seed" type="range" min="0" max="9999" step="1" value="0" />
+          <output id="val-seed">0</output></div></label>
+
+        <button type="button" id="dice" class="dice">🎲 Random seed</button>
       </form>
 
       <footer>Drag to orbit · scroll to zoom.</footer>
@@ -137,9 +152,10 @@
         "rib_ax_count", "rib_ax_amp", "rib_sp_count", "rib_sp_amp", "rib_sharp",
         "proj_count", "proj_rows", "proj_pos", "proj_size", "proj_sharp",
         "varix_count", "varix_amp",
+        "seed", "jitter",
       ];
       const INTS = new Set([
-        "rib_ax_count", "rib_sp_count", "proj_count", "proj_rows", "varix_count",
+        "rib_ax_count", "rib_sp_count", "proj_count", "proj_rows", "varix_count", "seed",
       ]);
 
       const readForm = () =>
@@ -198,6 +214,11 @@
         const p = PRESETS[preset.value];
         if (!p) return;
         for (const f of FIELDS) form.elements[f].value = p[f] ?? 0; // unset ornament → 0
+        update();
+      });
+
+      document.getElementById("dice").addEventListener("click", () => {
+        form.elements["seed"].value = Math.floor(Math.random() * 10000);
         update();
       });
 

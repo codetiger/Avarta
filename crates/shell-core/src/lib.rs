@@ -67,6 +67,14 @@ pub struct ShellParams {
     #[serde(default)]
     pub varix_amp: f32,
 
+    // --- randomness (seeded → reproducible) ---
+    /// Random seed (integer-valued). Same seed + params → identical shape.
+    #[serde(default)]
+    pub seed: f32,
+    /// Randomness amount, 0..1. 0 = perfectly uniform (seed has no effect).
+    #[serde(default)]
+    pub jitter: f32,
+
     /// Tessellation: segments per revolution along the coil.
     #[serde(default = "default_seg_theta")]
     pub seg_theta: u32,
@@ -105,6 +113,8 @@ impl Default for ShellParams {
             proj_sharp: 0.0,
             varix_count: 0.0,
             varix_amp: 0.0,
+            seed: 0.0,
+            jitter: 0.0,
             seg_theta: 96,
             seg_phi: 48,
         }
@@ -136,6 +146,43 @@ fn ribbed(x: f32, sharp: f32) -> f32 {
 #[inline]
 fn lobe(x: f32, power: f32) -> f32 {
     x.cos().max(0.0).powf(power)
+}
+
+// --- seeded value noise (pure function of the seed → reproducible randomness) ---
+
+#[inline]
+fn hash_u32(mut x: u32) -> u32 {
+    x ^= x >> 16;
+    x = x.wrapping_mul(0x7feb_352d);
+    x ^= x >> 15;
+    x = x.wrapping_mul(0x846c_a68b);
+    x ^= x >> 16;
+    x
+}
+
+/// Hash `(seed, i)` → f32 in `[0, 1)`.
+#[inline]
+fn rand01(seed: u32, i: i32) -> f32 {
+    let h = hash_u32(seed ^ hash_u32(i as u32));
+    (h >> 8) as f32 / ((1u32 << 24) as f32)
+}
+
+/// Hash `(seed, i)` → f32 in `[-1, 1)`.
+#[inline]
+fn rand_signed(seed: u32, i: i32) -> f32 {
+    rand01(seed, i) * 2.0 - 1.0
+}
+
+/// Smooth 1-D value noise in `[-1, 1]` (lattice values, smoothstep-interpolated).
+#[inline]
+fn noise1(seed: u32, x: f32) -> f32 {
+    let i = x.floor();
+    let f = x - i;
+    let ii = i as i32;
+    let a = rand01(seed, ii);
+    let b = rand01(seed, ii + 1);
+    let u = f * f * (3.0 - 2.0 * f);
+    (a + (b - a) * u) * 2.0 - 1.0
 }
 
 /// Generate a shell surface by sweeping an elliptical aperture along a
@@ -210,32 +257,73 @@ pub fn generate(p: &ShellParams) -> Mesh {
     let two_pi = 2.0 * PI;
     let sharp = p.rib_sharp;
 
+    // --- seeded randomness setup (jitter = 0 → exact uniform output) ---
+    let jittered = p.jitter > 1e-6;
+    let jit = p.jitter.clamp(0.0, 1.0);
+    let seed = p.seed.max(0.0) as u32;
+    // Distinct salts so the different effects are decorrelated.
+    const S_TWARP: u32 = 0x9E37_79B1;
+    const S_TWARP2: u32 = 0x85EB_CA77;
+    const S_PHIWARP: u32 = 0xC2B2_AE3D;
+    const S_AXAMP: u32 = 0x27D4_EB2F;
+    const S_VXAMP: u32 = 0x1656_67B1;
+    const S_PRAMP: u32 = 0xD3A2_646C;
+    const S_SPAMP: u32 = 0xFD70_46C5;
+    const S_COIL: u32 = 0xB55A_4F09;
+
     for i in 0..theta_verts {
         let theta = total_theta * (i as f32) / (theta_steps as f32);
         let g = (k * theta).exp();
         let ap_r = aspect * g; // aperture radial semi-axis
         let ap_z = g; // aperture axial semi-axis
-        let radius = ap_r / (1.0 - d); // axis → aperture centre (D controls openness)
         let ct = theta.cos();
         let st = theta.sin();
+
+        // Per-θ seeded jitter: a slow domain-warp on θ (so features drift across
+        // whorls instead of stacking at the same angle), per-instance amplitude
+        // wobble, a φ-shift (cords meander), and a subtle coil radius wobble.
+        let mut theta_w = theta;
+        let mut radius_wob = 1.0;
+        let mut ax_ampj = 1.0;
+        let mut varix_ampj = 1.0;
+        let mut proj_ampj = 1.0;
+        let mut phi_shift = 0.0;
+        if jittered {
+            let whorl = theta / two_pi;
+            theta_w = theta
+                + jit
+                    * 0.13
+                    * (noise1(seed ^ S_TWARP, whorl * 0.8) * 0.7
+                        + noise1(seed ^ S_TWARP2, whorl * 2.3) * 0.3);
+            radius_wob = 1.0 + jit * 0.025 * noise1(seed ^ S_COIL, whorl * 1.1 + 11.0);
+            ax_ampj = 1.0 + jit * 0.35 * rand_signed(seed ^ S_AXAMP, (p.rib_ax_count * whorl).round() as i32);
+            varix_ampj = 1.0 + jit * 0.5 * rand_signed(seed ^ S_VXAMP, (p.varix_count * whorl).round() as i32);
+            proj_ampj = 1.0 + jit * 0.45 * rand_signed(seed ^ S_PRAMP, (p.proj_count * whorl).round() as i32);
+            phi_shift = jit * 0.08 * noise1(seed ^ S_PHIWARP, theta * 0.4);
+        }
+
+        let radius = (ap_r / (1.0 - d)) * radius_wob; // axis → centre, with coil wobble
         let cz = p.t * radius; // centre height: ∝ radius gives the conical spire
 
-        // θ-only ornament terms (constant around the aperture).
-        // Axial ribs/waves (a non-integer count makes them drift across whorls).
-        let axial = p.rib_ax_amp * ribbed(p.rib_ax_count * theta, sharp);
-        // Varices: a few prominent raised transverse ridges per whorl.
-        let varix = p.varix_amp * lobe(p.varix_count * theta, VARIX_POWER);
-        // θ-window for the localised projections.
-        let proj_theta = lobe(p.proj_count * theta, proj_power);
+        // θ-only ornament terms (warped angle → features don't lock per whorl).
+        let axial = p.rib_ax_amp * ax_ampj * ribbed(p.rib_ax_count * theta_w, sharp);
+        let varix = p.varix_amp * varix_ampj * lobe(p.varix_count * theta_w, VARIX_POWER);
+        let proj_theta = lobe(p.proj_count * theta_w, proj_power);
 
-        for j in 0..cols {
-            let phi = two_pi * (j as f32) / (cols as f32);
+        for col in 0..cols {
+            let phi = two_pi * (col as f32) / (cols as f32);
+            let phi_o = phi + phi_shift; // warped φ for ornament placement
             // Spiral cords: continuous along the coil → longitudinal cords.
-            let spiral = p.rib_sp_amp * ribbed(p.rib_sp_count * phi, sharp);
+            let cord_ampj = if jittered {
+                1.0 + jit * 0.3 * rand_signed(seed ^ S_SPAMP, (p.rib_sp_count * phi / two_pi).round() as i32)
+            } else {
+                1.0
+            };
+            let spiral = p.rib_sp_amp * cord_ampj * ribbed(p.rib_sp_count * phi_o, sharp);
             // Projections: blunt beads (rows≥2, low sharp) → needle spines
             // (rows=1, high sharp), localised on a θ×φ grid offset by proj_pos.
             let proj = if proj_active {
-                p.proj_size * proj_theta * lobe(p.proj_rows * (phi - p.proj_pos), proj_power)
+                p.proj_size * proj_ampj * proj_theta * lobe(p.proj_rows * (phi_o - p.proj_pos), proj_power)
             } else {
                 0.0
             };
@@ -377,6 +465,39 @@ mod tests {
             assert!(moved, "variant {k} should change the surface");
             assert!(m.positions.iter().all(|x| x.is_finite()), "variant {k} finite");
         }
+    }
+
+    #[test]
+    fn jitter_zero_is_identical_regardless_of_seed() {
+        let a = generate(&ShellParams::default());
+        let b = generate(&ShellParams { seed: 9999.0, jitter: 0.0, ..ShellParams::default() });
+        assert_eq!(a.positions, b.positions, "jitter=0 must ignore the seed exactly");
+    }
+
+    #[test]
+    fn jitter_is_deterministic_and_seed_dependent() {
+        let p1 = ShellParams {
+            varix_count: 3.0,
+            varix_amp: 0.3,
+            jitter: 0.6,
+            seed: 1.0,
+            ..ShellParams::default()
+        };
+        let a = generate(&p1);
+        let a2 = generate(&p1);
+        let b = generate(&ShellParams { seed: 2.0, ..p1.clone() });
+        let uniform = generate(&ShellParams { jitter: 0.0, ..p1.clone() });
+
+        assert_eq!(a.positions, a2.positions, "same seed+params must reproduce exactly");
+        assert_eq!(a.positions.len(), b.positions.len());
+        assert!(
+            a.positions.iter().zip(&b.positions).any(|(x, y)| (x - y).abs() > 1e-5),
+            "different seeds should produce different shapes"
+        );
+        assert!(
+            a.positions.iter().zip(&uniform.positions).any(|(x, y)| (x - y).abs() > 1e-5),
+            "jitter should perturb the surface vs the uniform shape"
+        );
     }
 
     #[test]

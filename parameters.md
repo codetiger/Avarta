@@ -101,6 +101,17 @@ Thickened ridges marking former aperture positions / growth pauses (prominent in
 | **varix_count** | Varices per whorl | Number per revolution (commonly 3 ≈ every 120°). | 0 – 6 |
 | **varix_amp** | Varix prominence | Thickness/projection of each varix. | 0 – 0.5 |
 
+### Randomness (seeded)
+
+Breaks the perfectly-uniform look — without it, ornament locks to the same angle on every
+whorl. Driven by a seeded value-noise (a pure function of the seed), so it is fully
+**reproducible**: same `seed` + params → identical mesh.
+
+| Param | Name | Meaning | Range (typical) |
+|-------|------|---------|-----------------|
+| **jitter** | Randomness amount | 0 = perfectly uniform (seed ignored). Higher = more irregular: ornament drifts in angle/spacing across whorls, varies in height, and the coil gains a subtle organic wobble. | 0 – 1 |
+| **seed** | Random seed | Integer; picks one reproducible variation. | 0 – any |
+
 ---
 
 ## Layer 3 — Pigmentation Pattern (color layout)
@@ -150,7 +161,8 @@ The implemented generator (Layers 1–2) uses **17 shape parameters**:
 | Ribs & waves | rib_ax_count/amp, rib_sp_count/amp, rib_sharp | 5 |
 | Projections | proj_count, proj_rows, proj_pos, proj_size, proj_sharp | 5 |
 | Varices | varix_count, varix_amp | 2 |
-| **Total (implemented)** | | **17** |
+| Randomness | seed, jitter | 2 |
+| **Total (implemented)** | | **19** |
 
 Layers 3–4 (pigmentation, colour) are specified above but not yet built. Tessellation
 (`seg_theta`, `seg_phi`) is **internal** — auto-derived from the ornament frequency so ribs/cords/

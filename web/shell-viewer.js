@@ -28,6 +28,7 @@ const DEFAULTS = {
   rib_ax_count: 0, rib_ax_amp: 0, rib_sp_count: 0, rib_sp_amp: 0, rib_sharp: 0,
   proj_count: 0, proj_rows: 0, proj_pos: 0, proj_size: 0, proj_sharp: 0,
   varix_count: 0, varix_amp: 0,
+  seed: 0, jitter: 0,
   seg_theta: 96, seg_phi: 48,
 };
 const ATTRS = [
@@ -35,6 +36,7 @@ const ATTRS = [
   "rib_ax_count", "rib_ax_amp", "rib_sp_count", "rib_sp_amp", "rib_sharp",
   "proj_count", "proj_rows", "proj_pos", "proj_size", "proj_sharp",
   "varix_count", "varix_amp",
+  "seed", "jitter",
 ];
 
 class ShellViewer extends HTMLElement {
