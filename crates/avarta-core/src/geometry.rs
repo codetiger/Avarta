@@ -31,11 +31,13 @@ const VARIX_POWER: f32 = 3.0;
 fn estimate_n_seg(total: f32, rho: impl Fn(f32) -> f32, min_grid: usize) -> usize {
     let m = 1024usize.max(min_grid);
     let dx = total / m as f32;
-    let mut acc = 0.0f32;
+    // f64 accumulator: the running integral compounds over `m` (up to tens of
+    // thousands of) steps, where f32 summation would drift.
+    let mut acc = 0.0f64;
     let mut prev = rho(0.0);
     for s in 1..=m {
         let cur = rho(s as f32 * dx);
-        acc += 0.5 * (prev + cur) * dx;
+        acc += (0.5 * (prev + cur) * dx) as f64;
         prev = cur;
     }
     (acc.round() as usize).max(1)
@@ -57,11 +59,14 @@ fn graded_thetas(
     // Fine integration grid (finer than the output rows) for the CDF.
     let m = (8 * n_seg).max(2048).max(min_grid);
     let dx = total / m as f32;
-    let mut cdf = vec![0.0f32; m + 1];
+    // f64 CDF: the cumulative sum is read back by inverse lookup, so accumulation
+    // drift would bias where every row lands. Accumulate and compare in f64; cast
+    // back to f32 only for the final θ value.
+    let mut cdf = vec![0.0f64; m + 1];
     let mut prev = rho(0.0);
     for s in 1..=m {
         let cur = rho(s as f32 * dx);
-        cdf[s] = cdf[s - 1] + 0.5 * (prev + cur) * dx;
+        cdf[s] = cdf[s - 1] + (0.5 * (prev + cur) * dx) as f64;
         prev = cur;
     }
     let cap = cdf[m].max(1e-6);
@@ -69,14 +74,14 @@ fn graded_thetas(
     out.push(0.0);
     let mut s = 0usize; // walking index into cdf
     for i in 1..n_seg {
-        let target = (i as f32 / n_seg as f32) * cap;
+        let target = (i as f64 / n_seg as f64) * cap;
         while s < m && cdf[s + 1] < target {
             s += 1;
         }
         // Linear interpolation of θ within the crossing bin [s, s+1].
         let (lo, hi) = (cdf[s], cdf[s + 1]);
         let frac = if hi > lo {
-            (target - lo) / (hi - lo)
+            ((target - lo) / (hi - lo)) as f32
         } else {
             0.0
         };
@@ -531,16 +536,19 @@ fn smooth_normals(positions: &[f32], indices: &[u32], tess: &Tessellation) -> Ve
 /// downstream float precision (BVH / ray tracing). Translate + uniform scale
 /// leave the already-unit normals unchanged, so normals are not touched here.
 fn normalize_to_unit_sphere(positions: &mut [f32]) {
-    let vcount = (positions.len() / 3).max(1) as f32;
-    let (mut cx, mut cy, mut cz) = (0.0f32, 0.0f32, 0.0f32);
+    let vcount = (positions.len() / 3).max(1);
+    // f64 accumulators: the centroid sums up to ~800k coordinates, where f32
+    // summation loses precision — exactly what this normalisation exists to
+    // protect downstream. Storage stays f32; only the running sum is widened.
+    let (mut sx, mut sy, mut sz) = (0.0f64, 0.0f64, 0.0f64);
     for v in positions.chunks_exact(3) {
-        cx += v[0];
-        cy += v[1];
-        cz += v[2];
+        sx += v[0] as f64;
+        sy += v[1] as f64;
+        sz += v[2] as f64;
     }
-    cx /= vcount;
-    cy /= vcount;
-    cz /= vcount;
+    let cx = (sx / vcount as f64) as f32;
+    let cy = (sy / vcount as f64) as f32;
+    let cz = (sz / vcount as f64) as f32;
     let mut max_r2 = 0.0f32;
     for v in positions.chunks_exact(3) {
         let (dx, dy, dz) = (v[0] - cx, v[1] - cy, v[2] - cz);
