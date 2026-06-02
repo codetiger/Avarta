@@ -260,15 +260,18 @@ fn plan_tessellation(p: &ShellParams, prof: &Profiles) -> Tessellation {
     let proj_active = prof.proj_active;
     const PROJ_BAND: f32 = 0.3; // smooth window edge (argument radians)
     let rho = |theta: f32| {
-        let mut d = (c_geom * (k * theta).exp()).max(floor_uniform);
+        // `dens`/`win` rather than `d`/`w`: those letters are the openness and
+        // whorl-expansion params elsewhere, so don't reuse them for the local
+        // density and the projection-window weight.
+        let mut dens = (c_geom * (k * theta).exp()).max(floor_uniform);
         if proj_active {
             // distance (argument radians) from the nearest bead centre
             let cyc = proj_count * theta / two_pi;
             let dist = (cyc - cyc.round()).abs() * two_pi;
-            let w = (1.0 - (dist - proj_bead_w) / PROJ_BAND).clamp(0.0, 1.0);
-            d = d.max(proj_peak_density * w);
+            let win = (1.0 - (dist - proj_bead_w) / PROJ_BAND).clamp(0.0, 1.0);
+            dens = dens.max(proj_peak_density * win);
         }
-        d
+        dens
     };
 
     // The projection window oscillates `proj_count·n` times along the coil; the
@@ -589,11 +592,11 @@ fn orient_for_display(positions: &mut [f32], normals: &mut [f32], tess: &Tessell
     }
     ax /= cols as f32;
     ay /= cols as f32;
-    let rho = -0.5 * PI - ay.atan2(ax);
-    let (sr, cr) = rho.sin_cos();
+    let spin = -0.5 * PI - ay.atan2(ax); // azimuth that turns the body whorl to (0,-1)
+    let (sr, cr) = spin.sin_cos();
     let orient = |p: &mut [f32]| {
         let (x, y, z) = (p[0], p[1], p[2]);
-        p[0] = x * cr - y * sr; // x' = Rz(rho)·x
+        p[0] = x * cr - y * sr; // x' = Rz(spin)·x
         p[1] = z; //               y' = z   (coil axis -> up)
         p[2] = -(x * sr + y * cr); // z' = -y'
     };
