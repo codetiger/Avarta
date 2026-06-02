@@ -179,6 +179,10 @@ pub fn generate(p: &ShellParams) -> Mesh {
     }
     seg_theta_geom = seg_theta_geom.min(seg_theta as f32); // never exceed the peak cap
     let cols = seg_phi as usize;
+    // One extra column per ring duplicates col 0 (the φ = 0 ≡ 2π seam) so the
+    // closed tube can carry v = 1.0 at the wrap instead of folding the UV back to
+    // 0 across the final triangle strip — see the seam handling in the sweep below.
+    let stride = cols + 1;
 
     let total_theta = n * 2.0 * PI;
     let two_pi = 2.0 * PI;
@@ -192,7 +196,13 @@ pub fn generate(p: &ShellParams) -> Mesh {
     // tube + rib density (`seg_theta_geom`). A θ-constant floor — the uniform
     // feature need and a minimum density — keeps continuous ornament sampled and
     // stops inner whorls degenerating. When W≈1, g is ~flat → uniform spacing.
-    const MIN_DENSITY_PER_WHORL: f32 = 8.0;
+    //
+    // The floor is an *angular*-smoothness bound, not a size one: faceting is
+    // scale-independent (an N-gon's relative chord error is `1 − cos(π/N)`, so a
+    // tiny inner whorl looks just as polygonal as a big one at the same row count).
+    // 32 rows/whorl ⇒ ~0.5 % chord error (visually round); 8 gave ~7.6 % — the
+    // octagonal/"hexagonal" apex the grading optimisation introduced.
+    const MIN_DENSITY_PER_WHORL: f32 = 32.0;
     let g_max = (k * total_theta).exp(); // = W^n
     let c_geom = seg_theta_geom / (g_max * two_pi);
     // Baseline floor capped at `seg_theta_geom` (so it never inflates the smooth-
@@ -229,9 +239,9 @@ pub fn generate(p: &ShellParams) -> Mesh {
     let theta_verts = theta_steps + 1;
     let theta_list = graded_thetas(total_theta, theta_verts, &rho, min_grid);
 
-    let mut positions = Vec::with_capacity(theta_verts * cols * 3);
-    let mut normals = vec![0.0f32; theta_verts * cols * 3];
-    let mut uvs = Vec::with_capacity(theta_verts * cols * 2);
+    let mut positions = Vec::with_capacity(theta_verts * stride * 3);
+    let mut normals = vec![0.0f32; theta_verts * stride * 3];
+    let mut uvs = Vec::with_capacity(theta_verts * stride * 2);
 
     let sharp = p.rib_sharp;
 
@@ -310,8 +320,14 @@ pub fn generate(p: &ShellParams) -> Mesh {
         // wrapS=clamp — stays locked to the geometry under non-uniform rows.
         let u = theta / total_theta; // 0..1 along the coil
 
-        for col in 0..cols {
-            let phi = two_pi * (col as f32) / (cols as f32);
+        // `col == cols` is the seam duplicate: it reuses col 0's φ (so its
+        // position and ornament coincide exactly with col 0, keeping the tube
+        // closed) but carries v = 1.0, so the final triangle strip interpolates v
+        // up to 1.0 instead of folding it back to 0 — which, under wrapT=repeat,
+        // smeared the whole pigment pattern into that one seam strip.
+        for col in 0..=cols {
+            let cw = col % cols; // seam column wraps to col 0
+            let phi = two_pi * (cw as f32) / (cols as f32);
             // warped φ for ornament placement
             let phi_o = phi + phi_shift;
             // Spiral cords: continuous along the coil → longitudinal cords.
@@ -345,13 +361,15 @@ pub fn generate(p: &ShellParams) -> Mesh {
             positions.push(rr * st); // y
             positions.push(cz + (ap_z + disp) * phi.sin()); // z
             uvs.push(u);
-            uvs.push(col as f32 / cols as f32); // v around the aperture
+            uvs.push(col as f32 / cols as f32); // v around the aperture: 0 .. 1 (seam = 1.0)
         }
     }
 
-    // Build quads between adjacent rings; phi wraps (closed tube), so j+1 is mod cols.
+    // Build quads between adjacent rings. φ closes via the seam duplicate column
+    // (`stride = cols + 1`), so j+1 walks straight into it — no modulo wrap, and
+    // the closing strip connects col cols-1 to the v = 1.0 seam vertex.
     let mut indices = Vec::with_capacity(theta_steps * cols * 6);
-    let vid = |i: usize, j: usize| -> u32 { (i * cols + (j % cols)) as u32 };
+    let vid = |i: usize, j: usize| -> u32 { (i * stride + j) as u32 };
     for i in 0..theta_steps {
         for j in 0..cols {
             let a = vid(i, j);
@@ -391,6 +409,17 @@ pub fn generate(p: &ShellParams) -> Mesh {
             normals[idx * 3] += nrm[0];
             normals[idx * 3 + 1] += nrm[1];
             normals[idx * 3 + 2] += nrm[2];
+        }
+    }
+    // The seam duplicate (col == cols) and col 0 are the same physical vertex, so
+    // each only gathered the faces on its own side of the φ wrap. Sum them so both
+    // carry the full normal — otherwise the wrap would show a lighting seam.
+    for i in 0..theta_verts {
+        let (a, b) = ((i * stride) * 3, (i * stride + cols) * 3);
+        for k in 0..3 {
+            let s = normals[a + k] + normals[b + k];
+            normals[a + k] = s;
+            normals[b + k] = s;
         }
     }
     for nrm in normals.chunks_exact_mut(3) {
@@ -440,7 +469,7 @@ pub fn generate(p: &ShellParams) -> Mesh {
     //    (0,-1); 2) tip upright with Rx(-90°): (x,y,z) -> (x, z, -y), which sends
     //    +Z (coil axis) -> +Y (up), the low-z apex -> -Y (bottom), and the body
     //    whorl -> +Z (front).
-    let last = (theta_verts - 1) * cols;
+    let last = (theta_verts - 1) * stride;
     let (mut ax, mut ay) = (0.0f32, 0.0f32);
     for c in 0..cols {
         let b = (last + c) * 3;

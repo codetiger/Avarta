@@ -616,8 +616,9 @@ mod tests {
     #[test]
     fn min_density_floor_prevents_degenerate_inner_whorls() {
         // Extreme growth: without a minimum density the apex would collapse to a
-        // few huge triangles. The floor keeps the innermost whorl (u < 1/n) at
-        // roughly MIN_DENSITY_PER_WHORL rows, and the whole mesh stays finite.
+        // few huge triangles. The floor (MIN_DENSITY_PER_WHORL = 32) keeps the
+        // innermost whorl (u < 1/n) angularly smooth — ~32 rows, not the handful
+        // that made the apex read as a polygon — and the whole mesh stays finite.
         let m = generate(&ShellParams {
             w: 8.0,
             n: 10.0,
@@ -627,9 +628,45 @@ mod tests {
         let us = ring_us(&m);
         let inner_rows = us.iter().filter(|&&u| u < 1.0 / 10.0).count();
         assert!(
-            inner_rows >= 6,
-            "innermost whorl should keep ~floor rows, got {inner_rows}"
+            inner_rows >= 24,
+            "innermost whorl should stay angularly smooth (~32 rows), got {inner_rows}"
         );
+    }
+
+    #[test]
+    fn phi_seam_carries_v_one_and_stays_closed() {
+        // The φ wrap is a duplicated seam column: each ring ends with an extra
+        // vertex coincident with col 0 but carrying v = 1.0, so the closing strip
+        // interpolates v up to 1.0 (no texture-smear under wrapT=repeat) while the
+        // tube stays geometrically closed and the normals match across the seam.
+        let m = generate(&ShellParams {
+            w: 2.5,
+            n: 4.0,
+            rib_sp_count: 7.0, // non-integer-friendly cord count exercises the seam
+            rib_sp_amp: 0.2,
+            ..ShellParams::default()
+        });
+        let theta_verts = ring_us(&m).len();
+        let stride = (m.positions.len() / 3) / theta_verts;
+        for i in 0..theta_verts {
+            let first = i * stride; // col 0
+            let seam = i * stride + (stride - 1); // duplicate seam column
+            assert!(m.uvs[first * 2 + 1].abs() < 1e-6, "ring {i}: v must start at 0");
+            assert!(
+                (m.uvs[seam * 2 + 1] - 1.0).abs() < 1e-6,
+                "ring {i}: seam v must be exactly 1.0"
+            );
+            for k in 0..3 {
+                assert!(
+                    (m.positions[first * 3 + k] - m.positions[seam * 3 + k]).abs() < 1e-6,
+                    "ring {i}: seam vertex must coincide with col 0 (closed tube)"
+                );
+                assert!(
+                    (m.normals[first * 3 + k] - m.normals[seam * 3 + k]).abs() < 1e-5,
+                    "ring {i}: seam normal must match col 0 (no lighting seam)"
+                );
+            }
+        }
     }
 
     #[test]
