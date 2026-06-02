@@ -108,17 +108,32 @@ pub struct ShellParams {
     pub seg_phi: u32,
 }
 
+/// Look up a parameter's table default by key (panics on an unknown key — the
+/// table-wellformedness tests guard that). Lets the serde field defaults and the
+/// `Default` impl draw their values from the same single source as clamping.
+fn range_default(key: &str) -> f32 {
+    PARAM_RANGES
+        .iter()
+        .chain(PIGMENT_RANGES.iter())
+        .find(|r| r.key == key)
+        .expect("unknown range-table key")
+        .default
+}
+
+// Serde per-field defaults (used when a field is absent from the input JSON).
+// The range-table-backed ones read the table so they can't drift from it;
+// `seg_theta`/`seg_phi` are internal (not in the tables) and stay literal.
 fn default_aspect() -> f32 {
-    1.0
+    range_default("aspect")
 }
 fn default_pig_scale() -> f32 {
-    0.5
+    range_default("pig_scale")
 }
 fn default_pig_contrast() -> f32 {
-    0.5
+    range_default("pig_contrast")
 }
 fn default_pig_density() -> f32 {
-    0.5
+    range_default("pig_density")
 }
 fn default_seg_theta() -> u32 {
     96
@@ -128,13 +143,17 @@ fn default_seg_phi() -> u32 {
 }
 
 impl Default for ShellParams {
+    /// Built from the range tables — the single source of truth for defaults.
+    /// Every `PARAM_RANGES`/`PIGMENT_RANGES` field is filled from its table
+    /// default (the placeholder below is overwritten); only the internal,
+    /// non-table `seg_theta`/`seg_phi` are set here directly.
     fn default() -> Self {
-        Self {
-            w: 2.0,
-            d: 0.15,
-            t: 1.5,
-            n: 5.0,
-            aspect: 1.0,
+        let mut p = Self {
+            w: 0.0,
+            d: 0.0,
+            t: 0.0,
+            n: 0.0,
+            aspect: 0.0,
             rib_ax_count: 0.0,
             rib_ax_amp: 0.0,
             rib_sp_count: 0.0,
@@ -150,14 +169,20 @@ impl Default for ShellParams {
             seed: 0.0,
             jitter: 0.0,
             pig_regime: 0.0,
-            pig_scale: 0.5,
-            pig_contrast: 0.5,
-            pig_density: 0.5,
+            pig_scale: 0.0,
+            pig_contrast: 0.0,
+            pig_density: 0.0,
             pig_angle: 0.0,
             pig_irregularity: 0.0,
-            seg_theta: 96,
-            seg_phi: 48,
+            seg_theta: default_seg_theta(),
+            seg_phi: default_seg_phi(),
+        };
+        for r in PARAM_RANGES.iter().chain(PIGMENT_RANGES.iter()) {
+            if let Some(slot) = p.field_mut(r.key) {
+                *slot = r.default;
+            }
         }
+        p
     }
 }
 
@@ -235,6 +260,48 @@ pub const PIGMENT_RANGES: &[ParamRange] = &[
 ];
 
 impl ShellParams {
+    /// Mutable access to a shape/pigment field by its range-table key — the
+    /// single key→field map shared by [`ShellParams::clamp_in_place`], the
+    /// `Default` impl, and the range-table tests. Returns `None` for an unknown
+    /// key and for the internal `seg_theta`/`seg_phi` (not range-table params).
+    fn field_mut(&mut self, key: &str) -> Option<&mut f32> {
+        Some(match key {
+            "w" => &mut self.w,
+            "d" => &mut self.d,
+            "t" => &mut self.t,
+            "n" => &mut self.n,
+            "aspect" => &mut self.aspect,
+            "rib_ax_count" => &mut self.rib_ax_count,
+            "rib_ax_amp" => &mut self.rib_ax_amp,
+            "rib_sp_count" => &mut self.rib_sp_count,
+            "rib_sp_amp" => &mut self.rib_sp_amp,
+            "rib_sharp" => &mut self.rib_sharp,
+            "proj_count" => &mut self.proj_count,
+            "proj_rows" => &mut self.proj_rows,
+            "proj_pos" => &mut self.proj_pos,
+            "proj_size" => &mut self.proj_size,
+            "proj_sharp" => &mut self.proj_sharp,
+            "varix_count" => &mut self.varix_count,
+            "varix_amp" => &mut self.varix_amp,
+            "seed" => &mut self.seed,
+            "jitter" => &mut self.jitter,
+            "pig_regime" => &mut self.pig_regime,
+            "pig_scale" => &mut self.pig_scale,
+            "pig_contrast" => &mut self.pig_contrast,
+            "pig_density" => &mut self.pig_density,
+            "pig_angle" => &mut self.pig_angle,
+            "pig_irregularity" => &mut self.pig_irregularity,
+            _ => return None,
+        })
+    }
+
+    /// Read a range-table field by key, via the same map as [`field_mut`].
+    /// Test-only: the production paths use [`field_mut`] directly.
+    #[cfg(test)]
+    pub(crate) fn field(&self, key: &str) -> Option<f32> {
+        self.clone().field_mut(key).map(|v| *v)
+    }
+
     /// Clamp every user-facing field to its `PARAM_RANGES` bound, rounding the
     /// integer-valued fields. `seg_theta`/`seg_phi` are left untouched (internal,
     /// auto-derived). After this, every shape field is guaranteed in range.
@@ -247,41 +314,16 @@ impl ShellParams {
                 c
             }
         }
-        // Panics only if a range table is missing a key — caught by the unit
+        // Clamp each table field through the shared key→field map. The `expect`
+        // fires only if a table key has no `field_mut` arm — caught by the unit
         // tests `param_table_covers_every_field` / `pigment_table_is_wellformed`,
         // so it can never reach production.
-        let g = |k| {
-            PARAM_RANGES
-                .iter()
-                .chain(PIGMENT_RANGES.iter())
-                .find(|r| r.key == k)
-                .expect("missing range-table key")
-        };
-        self.w = fix(self.w, g("w"));
-        self.d = fix(self.d, g("d"));
-        self.t = fix(self.t, g("t"));
-        self.n = fix(self.n, g("n"));
-        self.aspect = fix(self.aspect, g("aspect"));
-        self.rib_ax_count = fix(self.rib_ax_count, g("rib_ax_count"));
-        self.rib_ax_amp = fix(self.rib_ax_amp, g("rib_ax_amp"));
-        self.rib_sp_count = fix(self.rib_sp_count, g("rib_sp_count"));
-        self.rib_sp_amp = fix(self.rib_sp_amp, g("rib_sp_amp"));
-        self.rib_sharp = fix(self.rib_sharp, g("rib_sharp"));
-        self.proj_count = fix(self.proj_count, g("proj_count"));
-        self.proj_rows = fix(self.proj_rows, g("proj_rows"));
-        self.proj_pos = fix(self.proj_pos, g("proj_pos"));
-        self.proj_size = fix(self.proj_size, g("proj_size"));
-        self.proj_sharp = fix(self.proj_sharp, g("proj_sharp"));
-        self.varix_count = fix(self.varix_count, g("varix_count"));
-        self.varix_amp = fix(self.varix_amp, g("varix_amp"));
-        self.seed = fix(self.seed, g("seed"));
-        self.jitter = fix(self.jitter, g("jitter"));
-        self.pig_regime = fix(self.pig_regime, g("pig_regime"));
-        self.pig_scale = fix(self.pig_scale, g("pig_scale"));
-        self.pig_contrast = fix(self.pig_contrast, g("pig_contrast"));
-        self.pig_density = fix(self.pig_density, g("pig_density"));
-        self.pig_angle = fix(self.pig_angle, g("pig_angle"));
-        self.pig_irregularity = fix(self.pig_irregularity, g("pig_irregularity"));
+        for r in PARAM_RANGES.iter().chain(PIGMENT_RANGES.iter()) {
+            let slot = self
+                .field_mut(r.key)
+                .expect("range-table key missing from field_mut");
+            *slot = fix(*slot, r);
+        }
     }
 
     /// A clamped copy — see [`ShellParams::clamp_in_place`].

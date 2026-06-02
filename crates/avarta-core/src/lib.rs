@@ -47,14 +47,18 @@ mod tests {
                 );
             }
         }
-        // The `Default` impl must agree with the table's defaults.
+        // `Default` is derived from the tables, so every shape field must equal
+        // its table default — which also confirms each `field` arm points at the
+        // right struct field.
         let d = ShellParams::default();
-        let by = |k| PARAM_RANGES.iter().find(|r| r.key == k).unwrap().default;
-        assert_eq!(d.w, by("w"));
-        assert_eq!(d.d, by("d"));
-        assert_eq!(d.t, by("t"));
-        assert_eq!(d.n, by("n"));
-        assert_eq!(d.aspect, by("aspect"));
+        for r in PARAM_RANGES {
+            assert_eq!(
+                d.field(r.key),
+                Some(r.default),
+                "{} default mismatch",
+                r.key
+            );
+        }
     }
 
     #[test]
@@ -81,28 +85,9 @@ mod tests {
         assert_eq!(p.jitter, 1.0);
         // every field lands within its declared range
         for r in PARAM_RANGES {
-            let v = match r.key {
-                "w" => p.w,
-                "d" => p.d,
-                "t" => p.t,
-                "n" => p.n,
-                "aspect" => p.aspect,
-                "rib_ax_count" => p.rib_ax_count,
-                "rib_ax_amp" => p.rib_ax_amp,
-                "rib_sp_count" => p.rib_sp_count,
-                "rib_sp_amp" => p.rib_sp_amp,
-                "rib_sharp" => p.rib_sharp,
-                "proj_count" => p.proj_count,
-                "proj_rows" => p.proj_rows,
-                "proj_pos" => p.proj_pos,
-                "proj_size" => p.proj_size,
-                "proj_sharp" => p.proj_sharp,
-                "varix_count" => p.varix_count,
-                "varix_amp" => p.varix_amp,
-                "seed" => p.seed,
-                "jitter" => p.jitter,
-                other => panic!("untested key {other}"),
-            };
+            let v = p
+                .field(r.key)
+                .expect("every PARAM_RANGES key resolves via field");
             assert!(
                 v >= r.min && v <= r.max,
                 "{} out of range after clamp: {v}",
@@ -728,15 +713,17 @@ mod tests {
                 r.key
             );
         }
-        // Defaults must agree with the `Default` impl (single source of truth).
+        // Defaults are sourced from the tables; confirm every pigment field
+        // resolves to its table default through the shared accessor.
         let d = ShellParams::default();
-        let by = |k| PIGMENT_RANGES.iter().find(|r| r.key == k).unwrap().default;
-        assert_eq!(d.pig_regime, by("pig_regime"));
-        assert_eq!(d.pig_scale, by("pig_scale"));
-        assert_eq!(d.pig_contrast, by("pig_contrast"));
-        assert_eq!(d.pig_density, by("pig_density"));
-        assert_eq!(d.pig_angle, by("pig_angle"));
-        assert_eq!(d.pig_irregularity, by("pig_irregularity"));
+        for r in PIGMENT_RANGES {
+            assert_eq!(
+                d.field(r.key),
+                Some(r.default),
+                "{} default mismatch",
+                r.key
+            );
+        }
     }
 
     #[test]
