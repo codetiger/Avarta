@@ -501,7 +501,7 @@ mod tests {
         let mut us = Vec::new();
         for k in (0..m.uvs.len()).step_by(2) {
             let u = m.uvs[k];
-            if us.last().map_or(true, |l: &f32| (u - *l).abs() > 1e-7) {
+            if us.last().is_none_or(|l: &f32| (u - *l).abs() > 1e-7) {
                 us.push(u);
             }
         }

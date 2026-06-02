@@ -274,9 +274,9 @@ fn plan_tessellation(p: &ShellParams, prof: &Profiles) -> Tessellation {
         0
     };
     // Total segments along the coil ≈ ∫ρ dθ; rows are then placed by inverse-CDF.
-    let theta_steps = estimate_n_seg(total_theta, &rho, min_grid);
+    let theta_steps = estimate_n_seg(total_theta, rho, min_grid);
     let theta_verts = theta_steps + 1;
-    let theta_list = graded_thetas(total_theta, theta_verts, &rho, min_grid);
+    let theta_list = graded_thetas(total_theta, theta_verts, rho, min_grid);
 
     Tessellation {
         theta_list,
@@ -338,8 +338,8 @@ fn sweep_surface(p: &ShellParams, prof: &Profiles, tess: &Tessellation) -> (Vec<
     // whorl: worst-case dphase/dθ ≈ jit·PH_POS·3·freq/2π < 1 ≤ count.
     const PH_POS: f32 = 1.5;
 
-    for i in 0..theta_verts {
-        let theta = theta_list[i]; // graded (non-uniform) row positions
+    for &theta in theta_list.iter() {
+        // graded (non-uniform) row positions
         let g = (k * theta).exp();
         let ap_r = aspect * g; // aperture radial semi-axis
         let ap_z = g; // aperture axial semi-axis
