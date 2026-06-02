@@ -20,7 +20,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 SPECIES_JSON = HERE / "species.json"
 REF_DIR = HERE / "reference"
-UA = "spiral-shell-harness/1.0 (local research; contact: nharishankar@gmail.com)"
+UA = "avarta-harness/1.0 (local research; contact: nharishankar@gmail.com)"
 
 # slug -> Wikipedia article title to pull the lead image from. Defaults to the
 # scientific name; listed here only where that differs or needs disambiguation.

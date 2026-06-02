@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Shell-shape comparison harness.
+"""Avarta shape-comparison harness.
 
 For each species in ``species.json``:
   1. get the mesh + Layer-3 pigment field from the Rust core *through the
@@ -211,7 +211,7 @@ def build_report(rows: list[dict]) -> None:
       </div>""")
 
     html = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
-<title>Shell catalog — generated vs. real</title>
+<title>Avarta catalog — generated vs. real</title>
 <style>
   :root {{ color-scheme: light; }}
   body {{ margin:0; font:14px/1.5 system-ui,sans-serif; background:#f4f1ea; color:#23272e; }}
@@ -234,7 +234,7 @@ def build_report(rows: list[dict]) -> None:
   .params {{ margin:0; padding:8px 14px 12px; font-size:11px; color:#999; white-space:pre-wrap; word-break:break-all; }}
   a {{ color:#b07a2a; }}
 </style></head><body>
-<header><h1>Shell catalog — generated vs. real</h1>
+<header><h1>Avarta catalog — generated vs. real</h1>
 <div class="sub">{len(rows)} species · {bar} · meshes from the Rust core via web/pkg wasm</div></header>
 <div class="grid">{''.join(cards)}</div>
 </body></html>"""

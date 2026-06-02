@@ -1,4 +1,4 @@
-# Shell-shape comparison harness
+# Avarta shape-comparison harness
 
 A test setup that checks how well the generator reproduces **real shell species**.
 For each species it gets the mesh out of the Rust core *through the existing wasm*
@@ -20,7 +20,7 @@ species.json ─▶ render_catalog.py
 reference/<slug>.jpg ─────────▶ report.html   (real photo | generated render, per species)
 ```
 
-- `extract_mesh.mjs` — Node bridge: loads the prebuilt `../web/pkg/shell_wasm.js`,
+- `extract_mesh.mjs` — Node bridge: loads the prebuilt `../web/pkg/avarta_wasm.js`,
   calls `generate(params)` exactly like the browser, and writes the mesh
   (positions/normals/uvs/indices) as a binary stream to stdout.
 - `render_catalog.py` — runs the bridge per species, builds the OBJ, renders it

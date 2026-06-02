@@ -505,7 +505,7 @@ class AvartaViewer extends HTMLElement {
   }
 
   /** Download the current frame (live or path-traced) as a PNG. */
-  saveImage(filename = "shell.png") {
+  saveImage(filename = "avarta.png") {
     const a = document.createElement("a");
     a.href = this.renderer.domElement.toDataURL("image/png");
     a.download = filename;

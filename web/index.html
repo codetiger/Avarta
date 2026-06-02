@@ -632,7 +632,7 @@
         viewer.addEventListener("hq-progress", (e) => {
           if (rendering) rstatus.textContent = `path-tracing… ${e.detail.samples} samples (drag to re-aim)`;
         });
-        document.getElementById("savepng").addEventListener("click", () => viewer.saveImage("shell.png"));
+        document.getElementById("savepng").addEventListener("click", () => viewer.saveImage("avarta.png"));
       }
 
       // Pull the authoritative ranges from Rust (via wasm), build the panel from

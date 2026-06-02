@@ -1,4 +1,4 @@
-# Python deps for the shell-shape comparison harness (render_catalog.py).
+# Python deps for the Avarta shape-comparison harness (render_catalog.py).
 #   cd harness && python3 -m venv .venv && . .venv/bin/activate
 #   pip install -r requirements.txt
 # Also requires Node.js on PATH (extract_mesh.mjs calls the existing web/pkg wasm).
