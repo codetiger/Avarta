@@ -10,6 +10,67 @@ use crate::params::ShellParams;
 use crate::pigment::pigment_field;
 use std::f32::consts::PI;
 
+/// Trapezoid-integrate the per-radian row density `rho` over `[0, total]` and
+/// return the number of θ segments, `round(∫ρ dθ).max(1)`. This is how many
+/// rows the graded sweep needs: where the coil is small (small `g`) `rho` is
+/// low and contributes few rows, so the integral is far below `seg_theta·n` for
+/// high-`W` shells, yet recovers `≈ seg_theta·n` when `rho` is ~constant (W≈1).
+/// `min_grid` forces a finer integration grid when `rho` has high-frequency
+/// structure (e.g. the per-bead projection window), so the integral is accurate.
+fn estimate_n_seg(total: f32, rho: impl Fn(f32) -> f32, min_grid: usize) -> usize {
+    let m = 1024usize.max(min_grid);
+    let dx = total / m as f32;
+    let mut acc = 0.0f32;
+    let mut prev = rho(0.0);
+    for s in 1..=m {
+        let cur = rho(s as f32 * dx);
+        acc += 0.5 * (prev + cur) * dx;
+        prev = cur;
+    }
+    (acc.round() as usize).max(1)
+}
+
+/// Place `theta_verts` θ values in `[0, total]` whose local spacing follows the
+/// density `rho` (more rows where `rho` is high), via inverse-transform
+/// sampling: integrate `rho` to a cumulative-density array on a fine grid, then
+/// for each output row find the θ where the CDF crosses `(i/n_seg)·total`.
+/// Endpoints are pinned exactly to `0` and `total`, so the apex seam and the
+/// aperture mouth are preserved. The returned list is monotone non-decreasing.
+fn graded_thetas(
+    total: f32,
+    theta_verts: usize,
+    rho: impl Fn(f32) -> f32,
+    min_grid: usize,
+) -> Vec<f32> {
+    let n_seg = theta_verts.saturating_sub(1).max(1);
+    // Fine integration grid (finer than the output rows) for the CDF.
+    let m = (8 * n_seg).max(2048).max(min_grid);
+    let dx = total / m as f32;
+    let mut cdf = vec![0.0f32; m + 1];
+    let mut prev = rho(0.0);
+    for s in 1..=m {
+        let cur = rho(s as f32 * dx);
+        cdf[s] = cdf[s - 1] + 0.5 * (prev + cur) * dx;
+        prev = cur;
+    }
+    let cap = cdf[m].max(1e-6);
+    let mut out = Vec::with_capacity(theta_verts);
+    out.push(0.0);
+    let mut s = 0usize; // walking index into cdf
+    for i in 1..n_seg {
+        let target = (i as f32 / n_seg as f32) * cap;
+        while s < m && cdf[s + 1] < target {
+            s += 1;
+        }
+        // Linear interpolation of θ within the crossing bin [s, s+1].
+        let (lo, hi) = (cdf[s], cdf[s + 1]);
+        let frac = if hi > lo { (target - lo) / (hi - lo) } else { 0.0 };
+        out.push((s as f32 + frac) * dx);
+    }
+    out.push(total); // endpoint pinned exactly
+    out
+}
+
 /// Generate a shell surface by sweeping an elliptical aperture along a
 /// logarithmic helico-spiral.
 ///
@@ -45,28 +106,69 @@ pub fn generate(p: &ShellParams) -> Mesh {
     const VERT_BUDGET: f32 = 800_000.0;
     let spc = |power: f32| SPC * power.sqrt();
 
-    let mut theta_need = 0.0f32; // features periodic along the coil
+    // Every feature is a radial displacement, and the chord (faceting) error of
+    // sampling one at N points per cycle is ∝ amplitude / N² — so the samples
+    // needed for a fixed visual error scale with √amplitude, not amplitude alone.
+    // A faint cord (or a subtle bead) therefore needs far fewer segments than a
+    // bold one. We calibrate against `AMP_REF`: at/above it a feature gets `spc`
+    // exactly (no quality change), and fainter features cost proportionally less.
+    // Because amplitude ≤ AMP_REF the factor is ≤ 1 — this only ever *reduces* the
+    // mesh.
+    const MIN_SPC: f32 = 6.0;
+    const AMP_REF: f32 = 0.6; // amplitude at/above which a feature keeps full sampling
+    // Ribs/cords are continuous two-sided waves: a flat floor still captures the
+    // oscillation even where it binds.
+    let spc_amp =
+        |amp: f32, power: f32| (spc(power) * (amp.min(AMP_REF) / AMP_REF).sqrt()).max(MIN_SPC);
+    // Projections are *localised* beads/spikes, so the floor scales with √power:
+    // even a faint but sharp spine keeps enough samples to resolve its narrow peak
+    // instead of vanishing between segments (a flat floor could drop the spike).
+    let spc_proj = |size: f32, power: f32| {
+        (spc(power) * (size.min(AMP_REF) / AMP_REF).sqrt()).max(MIN_SPC * power.sqrt())
+    };
+
+    // `theta_need` is the *uniform* θ density — features that run continuously
+    // along the coil (rib waves, varices) need it on every whorl. Projections are
+    // different: they are isolated beads, so their density is needed only *near
+    // each bead*, not across the whole whorl (see the localised window below).
+    let mut theta_need = 0.0f32; // uniform along the coil (ribs, varices)
     let mut phi_need = 0.0f32; // features periodic around the aperture
     if p.rib_ax_amp.abs() > 1e-6 {
-        theta_need = theta_need.max(p.rib_ax_count * spc(rib_power));
+        theta_need = theta_need.max(p.rib_ax_count * spc_amp(p.rib_ax_amp, rib_power));
     }
     if p.rib_sp_amp.abs() > 1e-6 {
-        phi_need = phi_need.max(p.rib_sp_count * spc(rib_power));
+        phi_need = phi_need.max(p.rib_sp_count * spc_amp(p.rib_sp_amp, rib_power));
     }
     if p.varix_amp.abs() > 1e-6 {
         theta_need = theta_need.max(p.varix_count * spc(VARIX_POWER));
     }
+    // Projection peak θ density (applied only inside each bead's window) and the
+    // window half-width: the bead occupies ±`proj_bead_w` (argument radians, the
+    // lobe's 10%-height span) of its cycle, widened by the jitter range so a
+    // jittered bead stays covered. Between beads the coil reverts to the uniform
+    // baseline.
+    let mut proj_peak_need = 0.0f32;
+    let mut proj_bead_w = 0.0f32;
     if proj_active {
-        theta_need = theta_need.max(p.proj_count * spc(proj_power));
-        phi_need = phi_need.max(p.proj_rows.max(1.0) * spc(proj_power));
+        let s = spc_proj(p.proj_size, proj_power);
+        proj_peak_need = p.proj_count * s;
+        phi_need = phi_need.max(p.proj_rows.max(1.0) * s);
+        let half = (0.1f32.powf(1.0 / proj_power)).acos(); // lobe drops to 10% here
+        let jit_range = 1.5 * p.jitter.clamp(0.0, 1.0); // max bead θ-phase shift
+        proj_bead_w = (half + jit_range).min(PI);
     }
+    let theta_need_peak = theta_need.max(proj_peak_need); // densest θ anywhere
 
     let base_theta = p.seg_theta.max(3);
     let base_phi = p.seg_phi.max(3);
+    // seg_theta is sized for the *peak* (so MAX_THETA / the vertex budget bound the
+    // densest case), while seg_theta_geom — used for the smooth-tube baseline —
+    // excludes the projection peak, so the coil between beads is not over-sampled.
     let mut seg_theta = (base_theta as f32)
-        .max(theta_need)
+        .max(theta_need_peak)
         .ceil()
         .min(MAX_THETA as f32) as u32;
+    let mut seg_theta_geom = (base_theta as f32).max(theta_need).min(MAX_THETA as f32);
     let mut seg_phi = (base_phi as f32).max(phi_need).ceil().min(MAX_PHI as f32) as u32;
     // Scale both down together if the total vertex count would blow the budget.
     let est = seg_theta as f32 * n * seg_phi as f32;
@@ -75,20 +177,62 @@ pub fn generate(p: &ShellParams) -> Mesh {
         seg_theta = ((seg_theta as f32 * s) as u32).max(base_theta);
         seg_phi = ((seg_phi as f32 * s) as u32).max(base_phi);
     }
+    seg_theta_geom = seg_theta_geom.min(seg_theta as f32); // never exceed the peak cap
     let cols = seg_phi as usize;
 
     let total_theta = n * 2.0 * PI;
+    let two_pi = 2.0 * PI;
     let k = w.ln() / (2.0 * PI); // growth rate: g = exp(k·theta) grows by W each turn
 
-    // Total segments along the coil (segments-per-revolution × revolutions).
-    let theta_steps = ((seg_theta as f32) * n).ceil().max(1.0) as usize;
+    // Graded θ-tessellation: place rows by a per-radian density `rho(θ)` instead
+    // of uniformly, so the tiny inner whorls get few rows and the body whorl gets
+    // many. Arc length per radian along the coil scales with the local radius
+    // (∝ g = e^{kθ}), so for constant arc-length-per-segment the geometry density
+    // is `c_geom·g`, normalised so the body whorl (g = g_max) keeps the smooth-
+    // tube + rib density (`seg_theta_geom`). A θ-constant floor — the uniform
+    // feature need and a minimum density — keeps continuous ornament sampled and
+    // stops inner whorls degenerating. When W≈1, g is ~flat → uniform spacing.
+    const MIN_DENSITY_PER_WHORL: f32 = 8.0;
+    let g_max = (k * total_theta).exp(); // = W^n
+    let c_geom = seg_theta_geom / (g_max * two_pi);
+    // Baseline floor capped at `seg_theta_geom` (so it never inflates the smooth-
+    // tube density), and the localised projection peak capped at `seg_theta`. The
+    // window is 1 within ±`proj_bead_w` of each bead centre and ramps to 0 just
+    // outside, so the projection's dense sampling lands *only on the beads*; the
+    // rest of the coil keeps the cheap baseline. Both peaks ≤ `seg_theta`/2π, so
+    // `rho ≤ seg_theta/2π` everywhere ⇒ `N ≤ seg_theta·n` (the budget bound holds).
+    let floor_uniform = seg_theta_geom.min(MIN_DENSITY_PER_WHORL.max(theta_need)) / two_pi;
+    let proj_peak_density = (seg_theta as f32).min(proj_peak_need) / two_pi;
+    let proj_count = p.proj_count;
+    const PROJ_BAND: f32 = 0.3; // smooth window edge (argument radians)
+    let rho = |theta: f32| {
+        let mut d = (c_geom * (k * theta).exp()).max(floor_uniform);
+        if proj_active {
+            // distance (argument radians) from the nearest bead centre
+            let cyc = proj_count * theta / two_pi;
+            let dist = (cyc - cyc.round()).abs() * two_pi;
+            let w = (1.0 - (dist - proj_bead_w) / PROJ_BAND).clamp(0.0, 1.0);
+            d = d.max(proj_peak_density * w);
+        }
+        d
+    };
+
+    // The projection window oscillates `proj_count·n` times along the coil; the
+    // integration grid must resolve it (≳24 samples per bead) for an accurate CDF.
+    let min_grid = if proj_active {
+        (24.0 * proj_count * n).ceil() as usize
+    } else {
+        0
+    };
+    // Total segments along the coil ≈ ∫ρ dθ; rows are then placed by inverse-CDF.
+    let theta_steps = estimate_n_seg(total_theta, &rho, min_grid);
     let theta_verts = theta_steps + 1;
+    let theta_list = graded_thetas(total_theta, theta_verts, &rho, min_grid);
 
     let mut positions = Vec::with_capacity(theta_verts * cols * 3);
     let mut normals = vec![0.0f32; theta_verts * cols * 3];
     let mut uvs = Vec::with_capacity(theta_verts * cols * 2);
 
-    let two_pi = 2.0 * PI;
     let sharp = p.rib_sharp;
 
     // --- seeded randomness setup (jitter = 0 → exact uniform output) ---
@@ -118,7 +262,7 @@ pub fn generate(p: &ShellParams) -> Mesh {
     const PH_POS: f32 = 1.5;
 
     for i in 0..theta_verts {
-        let theta = total_theta * (i as f32) / (theta_steps as f32);
+        let theta = theta_list[i]; // graded (non-uniform) row positions
         let g = (k * theta).exp();
         let ap_r = aspect * g; // aperture radial semi-axis
         let ap_z = g; // aperture axial semi-axis
@@ -161,7 +305,10 @@ pub fn generate(p: &ShellParams) -> Mesh {
         let varix = p.varix_amp * varix_ampj * lobe(p.varix_count * theta + varix_ph, VARIX_POWER);
         let proj_theta = lobe(p.proj_count * theta + proj_ph, proj_power);
 
-        let u = i as f32 / theta_steps as f32; // 0..1 along the coil
+        // u tracks the *actual* growth-time fraction (not the row index), so the
+        // pigment field — generated on its own uniform-in-θ grid and sampled with
+        // wrapS=clamp — stays locked to the geometry under non-uniform rows.
+        let u = theta / total_theta; // 0..1 along the coil
 
         for col in 0..cols {
             let phi = two_pi * (col as f32) / (cols as f32);

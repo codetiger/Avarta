@@ -152,40 +152,139 @@ mod tests {
 
     #[test]
     fn ribs_perturb_the_surface_but_stay_finite() {
-        // Pin resolution at the caps on both so auto-refinement clamps equally,
-        // keeping topology identical for an element-wise comparison.
-        let base = ShellParams {
-            seg_phi: 384,
-            seg_theta: 768,
+        let smooth = generate(&ShellParams::default());
+        // A single faint rib needs fewer samples than the base resolution, so
+        // auto-refine leaves tessellation at the base and topology matches the
+        // smooth shell — letting us confirm element-wise that ribs displace the
+        // surface. (Amplitude-aware sampling now makes a *realistic* ribbed shell
+        // refine to a different topology, so the strong feature is checked below.)
+        let one_rib = generate(&ShellParams {
+            rib_ax_count: 1.0,
+            rib_ax_amp: 0.1,
+            rib_sharp: 0.0,
             ..ShellParams::default()
-        };
-        let smooth = generate(&base);
+        });
+        assert_eq!(one_rib.positions.len(), smooth.positions.len());
+        let moved = smooth
+            .positions
+            .iter()
+            .zip(&one_rib.positions)
+            .any(|(a, b)| (a - b).abs() > 1e-4);
+        assert!(moved, "a rib should displace the surface");
+        // A realistic rib+cord shell (the combination that drives vertex count)
+        // pushes auto-refine to a finer mesh and stays finite.
         let ribbed = generate(&ShellParams {
             rib_ax_count: 14.0,
             rib_ax_amp: 0.25,
             rib_sp_count: 10.0,
             rib_sp_amp: 0.15,
             rib_sharp: 0.5,
-            ..base.clone()
+            ..ShellParams::default()
         });
-        assert_eq!(smooth.positions.len(), ribbed.positions.len());
-        let moved = smooth
-            .positions
-            .iter()
-            .zip(&ribbed.positions)
-            .any(|(a, b)| (a - b).abs() > 1e-4);
-        assert!(moved, "ornamentation should change vertex positions");
+        assert!(
+            ribbed.positions.len() > smooth.positions.len(),
+            "ribs + cords should refine the mesh ({} vs {})",
+            ribbed.positions.len(),
+            smooth.positions.len(),
+        );
         assert!(ribbed.positions.iter().all(|x| x.is_finite()));
     }
 
     #[test]
-    fn projections_and_varices_each_perturb_and_stay_finite() {
-        let base = ShellParams {
-            seg_phi: 384,
-            seg_theta: 768,
+    fn fainter_ribs_and_cords_use_fewer_segments() {
+        // The amplitude-aware optimisation: identical counts/sharpness, only the
+        // amplitude differs. A bold rib+cord shell must tessellate finer than a
+        // faint one (chord error ∝ amp/N² ⇒ samples ∝ √amp), and both finer than
+        // a fixed-amplitude design would otherwise force.
+        let common = ShellParams {
+            rib_ax_count: 20.0,
+            rib_sp_count: 30.0,
+            rib_sharp: 0.4,
             ..ShellParams::default()
         };
-        let smooth = generate(&base);
+        let faint = generate(&ShellParams {
+            rib_ax_amp: 0.05,
+            rib_sp_amp: 0.05,
+            ..common.clone()
+        });
+        let bold = generate(&ShellParams {
+            rib_ax_amp: 0.6,
+            rib_sp_amp: 0.6,
+            ..common.clone()
+        });
+        assert!(
+            faint.positions.len() < bold.positions.len(),
+            "fainter ribs/cords should use fewer vertices ({} vs {})",
+            faint.positions.len(),
+            bold.positions.len(),
+        );
+    }
+
+    #[test]
+    fn subtle_beads_use_fewer_segments_than_bold_spikes() {
+        // Cerithium nodulosum-style: small, blunt beads on a many-whorl spire must
+        // not force the same dense mesh as a bold spike of identical count/sharp.
+        let common = ShellParams {
+            proj_count: 12.0,
+            proj_rows: 2.0,
+            proj_pos: 0.6,
+            proj_sharp: 0.25,
+            n: 9.0,
+            w: 1.6,
+            ..ShellParams::default()
+        };
+        let subtle = generate(&ShellParams {
+            proj_size: 0.14,
+            ..common.clone()
+        });
+        let bold = generate(&ShellParams {
+            proj_size: 0.8,
+            ..common.clone()
+        });
+        assert!(
+            subtle.positions.len() < bold.positions.len(),
+            "subtle beads should tessellate coarser than bold spikes ({} vs {})",
+            subtle.positions.len(),
+            bold.positions.len(),
+        );
+        assert!(subtle.positions.iter().all(|x| x.is_finite()));
+    }
+
+    #[test]
+    fn projections_cluster_rows_near_beads() {
+        // Localised projection refinement: with near-cylindrical geometry (W≈1, so
+        // growth-driven grading is negligible), a sharp-spike shell must place rows
+        // NON-uniformly — dense near each spike, sparse between — rather than dense
+        // across the whole whorl. A smooth shell at W≈1 stays near-uniform (see
+        // `grading_degenerates_to_uniform_when_w_near_one`, ratio < 1.5), so a large
+        // spacing ratio here is the localisation at work.
+        let m = generate(&ShellParams {
+            w: 1.05,
+            n: 3.0,
+            proj_count: 6.0,
+            proj_rows: 1.0,
+            proj_size: 0.6,
+            proj_sharp: 0.9,
+            ..ShellParams::default()
+        });
+        let us = ring_us(&m);
+        let deltas: Vec<f32> = us.windows(2).map(|w| w[1] - w[0]).collect();
+        let max = deltas.iter().cloned().fold(f32::MIN, f32::max);
+        let min = deltas.iter().cloned().fold(f32::MAX, f32::min);
+        assert!(
+            max / min > 2.0,
+            "sharp spikes should cluster rows near beads, got spacing ratio {}",
+            max / min
+        );
+        assert!(m.positions.iter().all(|x| x.is_finite()));
+    }
+
+    #[test]
+    fn projections_and_varices_each_perturb_and_stay_finite() {
+        // Each ornament drives auto-refine to a finer mesh than a smooth shell and
+        // stays finite. Projection need is now size-dependent (see the ribs test),
+        // so we compare vertex counts against smooth rather than element-wise.
+        let smooth = generate(&ShellParams::default());
         let variants = [
             // single-row needle spine
             ShellParams {
@@ -194,7 +293,7 @@ mod tests {
                 proj_pos: 1.1,
                 proj_size: 0.8,
                 proj_sharp: 0.75,
-                ..base.clone()
+                ..ShellParams::default()
             },
             // multi-row blunt nodules
             ShellParams {
@@ -202,27 +301,22 @@ mod tests {
                 proj_rows: 2.0,
                 proj_size: 0.12,
                 proj_sharp: 0.15,
-                ..base.clone()
+                ..ShellParams::default()
             },
             ShellParams {
                 varix_count: 3.0,
                 varix_amp: 0.3,
-                ..base.clone()
+                ..ShellParams::default()
             },
         ];
         for (k, v) in variants.iter().enumerate() {
             let m = generate(v);
-            assert_eq!(
+            assert!(
+                m.positions.len() > smooth.positions.len(),
+                "variant {k} should refine the mesh ({} vs {})",
                 m.positions.len(),
                 smooth.positions.len(),
-                "variant {k} topology"
             );
-            let moved = smooth
-                .positions
-                .iter()
-                .zip(&m.positions)
-                .any(|(a, b)| (a - b).abs() > 1e-4);
-            assert!(moved, "variant {k} should change the surface");
             assert!(
                 m.positions.iter().all(|x| x.is_finite()),
                 "variant {k} finite"
@@ -397,6 +491,144 @@ mod tests {
         assert!(
             cords.positions.len() > plain.positions.len(),
             "high-frequency cords should auto-refine the cross-section mesh"
+        );
+    }
+
+    /// Per-ring `u` values: `u` is constant within a ring (all `cols` vertices
+    /// share it) and strictly increasing from ring to ring, so the distinct
+    /// values in order are exactly the rows. Length == `theta_verts`.
+    fn ring_us(m: &Mesh) -> Vec<f32> {
+        let mut us = Vec::new();
+        for k in (0..m.uvs.len()).step_by(2) {
+            let u = m.uvs[k];
+            if us.last().map_or(true, |l: &f32| (u - *l).abs() > 1e-7) {
+                us.push(u);
+            }
+        }
+        us
+    }
+
+    #[test]
+    fn grading_reduces_vertex_count_for_high_w() {
+        // No ornament, same whorl count and base resolution. A high-W shell's
+        // inner whorls shrink fast toward the apex, so graded θ-tessellation
+        // gives them far fewer rows than a low-W shell whose whorls stay large.
+        let low = generate(&ShellParams {
+            w: 1.3,
+            n: 6.0,
+            ..ShellParams::default()
+        });
+        let high = generate(&ShellParams {
+            w: 6.0,
+            n: 6.0,
+            ..ShellParams::default()
+        });
+        assert!(
+            high.positions.len() < low.positions.len(),
+            "high-W shell should use fewer vertices ({} vs {})",
+            high.positions.len(),
+            low.positions.len(),
+        );
+    }
+
+    #[test]
+    fn grading_degenerates_to_uniform_when_w_near_one() {
+        // When W≈1 the coil barely grows (g ~ constant), so row density is ~flat
+        // and the rows should be near-uniform — the opposite of a strongly graded
+        // W=2 shell, whose row-spacing ratio would be ~W^n (≈32).
+        let m = generate(&ShellParams {
+            w: 1.05,
+            n: 5.0,
+            ..ShellParams::default()
+        });
+        let us = ring_us(&m);
+        assert!(us.len() > 4);
+        let deltas: Vec<f32> = us.windows(2).map(|w| w[1] - w[0]).collect();
+        let max = deltas.iter().cloned().fold(f32::MIN, f32::max);
+        let min = deltas.iter().cloned().fold(f32::MAX, f32::min);
+        assert!(
+            max / min < 1.5,
+            "W≈1 should give near-uniform rows, got spacing ratio {}",
+            max / min
+        );
+    }
+
+    #[test]
+    fn inner_whorl_edge_length_matches_body_whorl() {
+        // The whole point of grading: roughly constant arc-length per segment.
+        // Arc length ≈ radius·Δθ; radius ∝ g and Δθ ∝ 1/g, so the world-space
+        // edge between consecutive rings stays comparable from inner to body
+        // whorl. A *uniform* mesh would make the inner edge ~g-times shorter
+        // (≈9× for these rings), failing this bound.
+        let m = generate(&ShellParams {
+            w: 2.0,
+            n: 5.0,
+            ..ShellParams::default()
+        });
+        let theta_verts = ring_us(&m).len();
+        let cols = (m.positions.len() / 3) / theta_verts;
+        let edge = |i: usize| -> f32 {
+            let a = i * cols * 3;
+            let b = (i + 1) * cols * 3;
+            let dx = m.positions[a] - m.positions[b];
+            let dy = m.positions[a + 1] - m.positions[b + 1];
+            let dz = m.positions[a + 2] - m.positions[b + 2];
+            (dx * dx + dy * dy + dz * dz).sqrt()
+        };
+        let inner = edge(theta_verts * 4 / 10); // ~40% along the coil
+        let body = edge(theta_verts - 2); // last segment (body whorl)
+        let ratio = inner.max(body) / inner.min(body);
+        assert!(
+            ratio < 4.0,
+            "inner and body edge lengths should be comparable, got ratio {ratio}"
+        );
+    }
+
+    #[test]
+    fn u_uv_is_theta_fraction_monotonic_ring_constant() {
+        // The pigment-mapping guarantee: `u` spans [0,1] exactly, increases
+        // monotonically, and is identical across every column of a ring (so the
+        // pigment texture stays locked to growth-time θ under non-uniform rows).
+        let m = generate(&ShellParams {
+            w: 3.0,
+            n: 4.0,
+            ..ShellParams::default()
+        });
+        let us = ring_us(&m);
+        let theta_verts = us.len();
+        let cols = (m.positions.len() / 3) / theta_verts;
+        assert!(us[0].abs() < 1e-6, "u must start at 0");
+        assert!((us[theta_verts - 1] - 1.0).abs() < 1e-6, "u must end at 1");
+        for w in us.windows(2) {
+            assert!(w[1] > w[0], "u must be strictly increasing per ring");
+        }
+        for i in 0..theta_verts {
+            let base_u = m.uvs[i * cols * 2];
+            for j in 0..cols {
+                assert!(
+                    (m.uvs[(i * cols + j) * 2] - base_u).abs() < 1e-7,
+                    "u must be constant across a ring"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn min_density_floor_prevents_degenerate_inner_whorls() {
+        // Extreme growth: without a minimum density the apex would collapse to a
+        // few huge triangles. The floor keeps the innermost whorl (u < 1/n) at
+        // roughly MIN_DENSITY_PER_WHORL rows, and the whole mesh stays finite.
+        let m = generate(&ShellParams {
+            w: 8.0,
+            n: 10.0,
+            ..ShellParams::default()
+        });
+        assert!(m.positions.iter().all(|x| x.is_finite()));
+        let us = ring_us(&m);
+        let inner_rows = us.iter().filter(|&&u| u < 1.0 / 10.0).count();
+        assert!(
+            inner_rows >= 6,
+            "innermost whorl should keep ~floor rows, got {inner_rows}"
         );
     }
 
