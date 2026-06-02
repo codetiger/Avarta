@@ -317,6 +317,14 @@ class AvartaViewer extends HTMLElement {
     }
   }
 
+  /**
+   * Re-frame the camera to the shell from the canonical front-and-above pose
+   * (the toolbar "Reset view" button). No geometry change.
+   */
+  resetView() {
+    if (this._loaded) this._frameObject(true);
+  }
+
   /** Return to the live raster viewport. */
   stopHQ() {
     this.scene.environment = this.envPMREM;
