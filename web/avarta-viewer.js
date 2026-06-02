@@ -568,10 +568,16 @@ class AvartaViewer extends HTMLElement {
     this.controls.panSpeed = 0.8;
     this.controls.staticMoving = false; // smooth, damped
     this.controls.dynamicDampingFactor = 0.12;
-    this.controls.minDistance = 0.5;
-    this.controls.maxDistance = 40;
-    // Moving the camera resets the path-trace accumulation.
+    // Zoom bounds are re-fit per object in `_frameObject` (the mesh is unit-
+    // normalised, so these defaults already match); minDistance keeps the camera
+    // just outside the shell so zooming in can't push it through the near plane.
+    this.controls.minDistance = 1.1;
+    this.controls.maxDistance = 50;
+    // Moving the camera resets the path-trace accumulation. Re-bracket the clip
+    // planes to the current zoom on every move, so the shell can never cross the
+    // near or far plane regardless of how far in/out the user scrolls.
     this.controls.addEventListener("change", () => {
+      this._updateClipPlanes();
       if (this._mode === "hq" && this.pathTracer)
         this.pathTracer.updateCamera();
     });
@@ -760,10 +766,28 @@ class AvartaViewer extends HTMLElement {
 
     this.controls.target.copy(c);
     this.camera.position.copy(c).addScaledVector(dir, dist);
-    this.camera.near = Math.max(dist - r * 2, 0.01);
-    this.camera.far = dist + r * 4;
-    this.camera.updateProjectionMatrix();
+    // Clamp zoom to the object: stay just outside the shell (no near-plane punch-
+    // through) and allow a generous pull-back. Scaled by r, though r ≈ 1 always.
+    this.controls.minDistance = r * 1.1;
+    this.controls.maxDistance = r * 50;
+    this._updateClipPlanes();
     this.controls.update();
+  }
+
+  /**
+   * Bracket the near/far clip planes around the shell for the *current* camera
+   * distance. Called on first frame and on every camera move, so zoom can never
+   * push the object out of either plane. The margins are constant multiples of
+   * the bounding radius (the object spans `dist ± r`), keeping depth-buffer
+   * precision high — near tracks the zoom instead of being pinned at framing.
+   */
+  _updateClipPlanes() {
+    const bs = this.mesh?.geometry?.boundingSphere;
+    const r = bs ? bs.radius || 1 : 1;
+    const dist = this.camera.position.distanceTo(this.controls.target);
+    this.camera.near = Math.max(dist - r * 1.2, 0.01); // 0.2·r in front of the shell
+    this.camera.far = dist + r * 3; // 2·r behind it
+    this.camera.updateProjectionMatrix();
   }
 
   _onResize() {
