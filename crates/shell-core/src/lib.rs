@@ -390,13 +390,15 @@ fn noise1(seed: u32, x: f32) -> f32 {
 // with the RD stripes for spots (×) and reticulation (max). Coefficients are
 // empirically tuned approximations — tweak against the species harness.
 
-/// Pigment grid resolution around the lip (φ), independent of the mesh's `cols`
-/// so the pattern stays crisp on a cheap mesh.
-const PIG_PHI: usize = 256;
+/// Pigment texture resolution around the lip (φ), independent of the mesh's
+/// `cols`. High enough that hard-edged patterns don't pixellate when the texture
+/// is magnified on a large body whorl (mip/anisotropic filtering smooths the
+/// rest); the reaction–diffusion line runs coarser and is resampled up to this.
+const PIG_PHI: usize = 512;
 /// Growth-time (θ) samples per whorl, bounded so long augers stay affordable.
-const PIG_THETA_PER_WHORL: f32 = 200.0;
-const PIG_THETA_MIN: usize = 64;
-const PIG_THETA_MAX: usize = 3072;
+const PIG_THETA_PER_WHORL: f32 = 256.0;
+const PIG_THETA_MIN: usize = 96;
+const PIG_THETA_MAX: usize = 4096;
 /// RD steps to settle the line before recording the apex column.
 const PIG_BURN_IN: usize = 400;
 /// Decorrelates the pigment RNG from the geometry jitter salts.
@@ -486,7 +488,9 @@ fn pigment_field(p: &ShellParams) -> (Vec<u8>, u32, u32) {
 
     // Contrast → smoothstep window around the mid-tone: crisp edge (high) vs.
     // soft gradient (low, which the viewer palette renders as accent mid-tones).
-    let half = lerp(0.35, 0.02, contrast);
+    // The floor keeps even the crispest edge a couple of texels wide so it
+    // anti-aliases under texture filtering instead of stair-stepping.
+    let half = lerp(0.35, 0.05, contrast);
     let edge = |x: f32| smoothstep(0.5 - half, 0.5 + half, x);
 
     // Commarginal growth-rhythm oscillation: a band in growth-time (θ), uniform
@@ -594,12 +598,22 @@ fn pigment_field(p: &ShellParams) -> (Vec<u8>, u32, u32) {
         hi = hi.max(x);
     }
     let span = (hi - lo).max(1e-6);
+    // Bilinearly sample the normalised sim line at a fractional φ position
+    // (wrapping the periodic lip). Interpolating *before* the edge threshold is
+    // what removes the φ stair-stepping when ny_sim < ny (the output rows).
+    let sample_phi = |i: usize, fy: f32| -> f32 {
+        let f = fy.rem_euclid(ny_sim as f32);
+        let a = f.floor() as usize % ny_sim;
+        let b = (a + 1) % ny_sim;
+        let fr = f - f.floor();
+        ((raw[a * nx + i] - lo) * (1.0 - fr) + (raw[b * nx + i] - lo) * fr) / span
+    };
     // Resample the ny_sim line onto the PIG_PHI (`ny`) output rows.
     for i in 0..nx {
         let ax = axial_at(i);
         for jo in 0..ny {
-            let js = jo * ny_sim / ny;
-            let gs = (raw[js * nx + i] - lo) / span;
+            let fy = jo as f32 * ny_sim as f32 / ny as f32;
+            let gs = sample_phi(i, fy);
             // Spots = RD stripes ∧ transverse rhythm (dots at intersections);
             // reticulated = RD stripes ∨ rhythm (net); chevrons = the drifted
             // diagonal ∨ its φ-mirror (the two leans meet in V-tents); others use
@@ -608,7 +622,7 @@ fn pigment_field(p: &ShellParams) -> (Vec<u8>, u32, u32) {
                 PigRegime::Spots => gs * ax,
                 PigRegime::Reticulated => gs.max(ax),
                 PigRegime::Chevrons => {
-                    let mirror = (raw[(ny_sim - 1 - js) * nx + i] - lo) / span;
+                    let mirror = sample_phi(i, (ny_sim as f32 - 1.0) - fy);
                     gs.max(mirror)
                 }
                 _ => gs,
