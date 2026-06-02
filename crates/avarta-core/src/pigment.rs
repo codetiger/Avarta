@@ -36,6 +36,12 @@ const PIG_THETA_MAX: usize = 4096;
 const PIG_BURN_IN: usize = 400;
 /// Decorrelates the pigment RNG from the geometry jitter salts.
 const S_PIGMENT: u32 = 0x5F1C_3A2B;
+/// Salt for the axial-stripe phase wobble (irregularity along the coil).
+const S_AXIAL_PHASE: u32 = 0x1111_2222;
+/// Salt gating whether a mid-sweep random re-nucleation fires this column.
+const S_RESEED_GATE: u32 = 0x0000_ABCD;
+/// Salt picking which lip cell that re-nucleation seeds.
+const S_RESEED_POS: u32 = 0x0000_1234;
 
 /// Pigment pattern families (the `pig_regime` index). Each selects a Gray–Scott
 /// configuration / combination of the shared RD line; the continuous `pig_*`
@@ -173,7 +179,7 @@ pub(crate) fn pigment_field(p: &ShellParams) -> (Vec<u8>, u32, u32) {
         let whorls = (i as f32 / nx as f32) * p.n;
         let mut ph = whorls * bands_per_whorl * (2.0 * PI);
         if irreg > 0.0 {
-            ph += irreg * 1.5 * noise1(seed ^ 0x1111_2222, whorls * 3.0);
+            ph += irreg * 1.5 * noise1(seed ^ S_AXIAL_PHASE, whorls * 3.0);
         }
         0.5 + 0.5 * ph.cos()
     };
@@ -246,8 +252,8 @@ pub(crate) fn pigment_field(p: &ShellParams) -> (Vec<u8>, u32, u32) {
         for _ in 0..substeps {
             gs.step(drift);
         }
-        if irreg > 0.0 && rand01(seed ^ 0xABCD, i as i32) < irreg * 0.05 {
-            let j = (rand01(seed ^ 0x1234, i as i32) * ny_sim as f32) as usize % ny_sim;
+        if irreg > 0.0 && rand01(seed ^ S_RESEED_GATE, i as i32) < irreg * 0.05 {
+            let j = (rand01(seed ^ S_RESEED_POS, i as i32) * ny_sim as f32) as usize % ny_sim;
             gs.nucleate(j);
         }
         let v = gs.activator();
