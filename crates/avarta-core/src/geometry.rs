@@ -3,12 +3,23 @@
 //! Sweeps an elliptical aperture along a logarithmic helico-spiral, modulating
 //! it with ribs / cords / projections / varices and seeded jitter, then
 //! normalises, orients, and attaches the Layer-3 pigment field.
+//!
+//! `generate` is deliberately a short recipe: it computes the feature profile
+//! and coil constants, then delegates to one helper per phase —
+//! [`plan_tessellation`] (how many rows/columns and where), [`sweep_surface`]
+//! (the aperture sweep → positions/uvs), [`build_indices`], [`smooth_normals`],
+//! [`normalize_to_unit_sphere`], and [`orient_for_display`]. Each helper is
+//! self-contained and individually testable.
 
 use crate::mesh::Mesh;
 use crate::noise::{lobe, noise1, rand_signed, ribbed};
 use crate::params::ShellParams;
 use crate::pigment::pigment_field;
 use std::f32::consts::PI;
+
+/// Varix profile exponent — rounded raised ridges. Shared by tessellation
+/// planning (how narrow the varix is) and the sweep (the `lobe` it draws).
+const VARIX_POWER: f32 = 3.0;
 
 /// Trapezoid-integrate the per-radian row density `rho` over `[0, total]` and
 /// return the number of θ segments, `round(∫ρ dθ).max(1)`. This is how many
@@ -71,28 +82,55 @@ fn graded_thetas(
     out
 }
 
-/// Generate a shell surface by sweeping an elliptical aperture along a
-/// logarithmic helico-spiral.
-///
-/// `theta` runs along the coil (0 .. 2π·n); `phi` runs around the aperture.
-/// The aperture and its distance from the axis both scale by `g = W^(theta/2π)`,
-/// which keeps the form self-similar (why shells are logarithmic spirals).
-pub fn generate(p: &ShellParams) -> Mesh {
-    // Single, total clamp: every shape field is now guaranteed within its
-    // `PARAM_RANGES` bound, so the rest of the function (and the tessellation /
-    // mesh math below) never sees an out-of-range value.
-    let p = p.clamped();
-    let p = &p;
-    let n = p.n;
-    let d = p.d;
-    let aspect = p.aspect;
-    let w = p.w;
+/// Feature profile exponents (how narrow each ornament's peak is) plus the
+/// projection on/off flag — shared by tessellation planning and the sweep so
+/// the two agree on how sharp every feature is.
+struct Profiles {
+    /// Rib/cord raised-cosine exponent — matches `ribbed`.
+    rib_power: f32,
+    /// Projection lobe exponent — matches the `lobe` use for beads/spines.
+    proj_power: f32,
+    /// Whether projections contribute at all (size, count and rows all non-trivial).
+    proj_active: bool,
+}
 
-    // Feature profile exponents — also drive how narrow each feature is.
-    const VARIX_POWER: f32 = 3.0; // rounded raised ridges
-    let rib_power = 1.0 + p.rib_sharp.clamp(0.0, 1.0) * 8.0; // matches `ribbed`
-    let proj_power = 2.0 + p.proj_sharp.clamp(0.0, 1.0).powi(2) * 40.0; // matches `lobe` use
-    let proj_active = p.proj_size.abs() > 1e-6 && p.proj_count > 0.5 && p.proj_rows > 0.5;
+impl Profiles {
+    fn new(p: &ShellParams) -> Self {
+        Self {
+            rib_power: 1.0 + p.rib_sharp.clamp(0.0, 1.0) * 8.0, // matches `ribbed`
+            proj_power: 2.0 + p.proj_sharp.clamp(0.0, 1.0).powi(2) * 40.0, // matches `lobe` use
+            proj_active: p.proj_size.abs() > 1e-6 && p.proj_count > 0.5 && p.proj_rows > 0.5,
+        }
+    }
+}
+
+/// The resolved tessellation: where every row sits along the coil and the
+/// cross-section topology (columns + the duplicated φ-seam column).
+struct Tessellation {
+    /// θ value of each row (non-uniform, graded). Length == `theta_verts`.
+    theta_list: Vec<f32>,
+    /// Number of rows along the coil (`theta_steps + 1`).
+    theta_verts: usize,
+    /// Number of θ segments between rows.
+    theta_steps: usize,
+    /// Columns around the aperture (the real φ samples).
+    cols: usize,
+    /// Per-ring vertex stride: `cols + 1` (the extra column is the φ-seam
+    /// duplicate of col 0 that carries v = 1.0 — see [`sweep_surface`]).
+    stride: usize,
+}
+
+/// Decide how finely to tessellate and where to place each row.
+///
+/// Auto-refines the θ/φ resolution from the *impacting* ornament parameters,
+/// then grades the row placement so tiny inner whorls get few rows and the body
+/// whorl gets many (constant arc-length per segment). Pure function of `p` and
+/// the feature `prof`.
+fn plan_tessellation(p: &ShellParams, prof: &Profiles) -> Tessellation {
+    let n = p.n;
+    let two_pi = 2.0 * PI;
+    let total_theta = n * two_pi;
+    let k = p.w.ln() / two_pi; // growth rate: g = exp(k·theta) grows by W each turn
 
     // Auto-refine tessellation per direction from the *impacting* parameters:
     // a feature needs enough samples across each peak, and sharper peaks (higher
@@ -134,10 +172,10 @@ pub fn generate(p: &ShellParams) -> Mesh {
     let mut theta_need = 0.0f32; // uniform along the coil (ribs, varices)
     let mut phi_need = 0.0f32; // features periodic around the aperture
     if p.rib_ax_amp.abs() > 1e-6 {
-        theta_need = theta_need.max(p.rib_ax_count * spc_amp(p.rib_ax_amp, rib_power));
+        theta_need = theta_need.max(p.rib_ax_count * spc_amp(p.rib_ax_amp, prof.rib_power));
     }
     if p.rib_sp_amp.abs() > 1e-6 {
-        phi_need = phi_need.max(p.rib_sp_count * spc_amp(p.rib_sp_amp, rib_power));
+        phi_need = phi_need.max(p.rib_sp_count * spc_amp(p.rib_sp_amp, prof.rib_power));
     }
     if p.varix_amp.abs() > 1e-6 {
         theta_need = theta_need.max(p.varix_count * spc(VARIX_POWER));
@@ -149,11 +187,11 @@ pub fn generate(p: &ShellParams) -> Mesh {
     // baseline.
     let mut proj_peak_need = 0.0f32;
     let mut proj_bead_w = 0.0f32;
-    if proj_active {
-        let s = spc_proj(p.proj_size, proj_power);
+    if prof.proj_active {
+        let s = spc_proj(p.proj_size, prof.proj_power);
         proj_peak_need = p.proj_count * s;
         phi_need = phi_need.max(p.proj_rows.max(1.0) * s);
-        let half = (0.1f32.powf(1.0 / proj_power)).acos(); // lobe drops to 10% here
+        let half = (0.1f32.powf(1.0 / prof.proj_power)).acos(); // lobe drops to 10% here
         let jit_range = 1.5 * p.jitter.clamp(0.0, 1.0); // max bead θ-phase shift
         proj_bead_w = (half + jit_range).min(PI);
     }
@@ -184,10 +222,6 @@ pub fn generate(p: &ShellParams) -> Mesh {
     // 0 across the final triangle strip — see the seam handling in the sweep below.
     let stride = cols + 1;
 
-    let total_theta = n * 2.0 * PI;
-    let two_pi = 2.0 * PI;
-    let k = w.ln() / (2.0 * PI); // growth rate: g = exp(k·theta) grows by W each turn
-
     // Graded θ-tessellation: place rows by a per-radian density `rho(θ)` instead
     // of uniformly, so the tiny inner whorls get few rows and the body whorl gets
     // many. Arc length per radian along the coil scales with the local radius
@@ -214,6 +248,7 @@ pub fn generate(p: &ShellParams) -> Mesh {
     let floor_uniform = seg_theta_geom.min(MIN_DENSITY_PER_WHORL.max(theta_need)) / two_pi;
     let proj_peak_density = (seg_theta as f32).min(proj_peak_need) / two_pi;
     let proj_count = p.proj_count;
+    let proj_active = prof.proj_active;
     const PROJ_BAND: f32 = 0.3; // smooth window edge (argument radians)
     let rho = |theta: f32| {
         let mut d = (c_geom * (k * theta).exp()).max(floor_uniform);
@@ -239,8 +274,36 @@ pub fn generate(p: &ShellParams) -> Mesh {
     let theta_verts = theta_steps + 1;
     let theta_list = graded_thetas(total_theta, theta_verts, &rho, min_grid);
 
+    Tessellation {
+        theta_list,
+        theta_verts,
+        theta_steps,
+        cols,
+        stride,
+    }
+}
+
+/// Sweep the elliptical aperture along the coil into `(positions, uvs)`,
+/// modulating it with ribs / cords / projections / varices and seeded jitter.
+///
+/// `theta` runs along the coil (0 .. 2π·n); `phi` runs around the aperture.
+/// The aperture and its distance from the axis both scale by `g = W^(theta/2π)`,
+/// which keeps the form self-similar (why shells are logarithmic spirals).
+fn sweep_surface(p: &ShellParams, prof: &Profiles, tess: &Tessellation) -> (Vec<f32>, Vec<f32>) {
+    let d = p.d;
+    let aspect = p.aspect;
+    let two_pi = 2.0 * PI;
+    let total_theta = p.n * two_pi;
+    let k = p.w.ln() / two_pi;
+    let proj_active = prof.proj_active;
+    let proj_power = prof.proj_power;
+
+    let theta_verts = tess.theta_verts;
+    let stride = tess.stride;
+    let cols = tess.cols;
+    let theta_list = &tess.theta_list;
+
     let mut positions = Vec::with_capacity(theta_verts * stride * 3);
-    let mut normals = vec![0.0f32; theta_verts * stride * 3];
     let mut uvs = Vec::with_capacity(theta_verts * stride * 2);
 
     let sharp = p.rib_sharp;
@@ -365,9 +428,20 @@ pub fn generate(p: &ShellParams) -> Mesh {
         }
     }
 
-    // Build quads between adjacent rings. φ closes via the seam duplicate column
-    // (`stride = cols + 1`), so j+1 walks straight into it — no modulo wrap, and
-    // the closing strip connects col cols-1 to the v = 1.0 seam vertex.
+    (positions, uvs)
+}
+
+/// Build the triangle index buffer for the swept grid. φ closes via the seam
+/// duplicate column (`stride = cols + 1`), so `j+1` walks straight into it — no
+/// modulo wrap, and the closing strip connects col `cols-1` to the v = 1.0 seam
+/// vertex.
+fn build_indices(tess: &Tessellation) -> Vec<u32> {
+    let Tessellation {
+        theta_steps,
+        cols,
+        stride,
+        ..
+    } = *tess;
     let mut indices = Vec::with_capacity(theta_steps * cols * 6);
     let vid = |i: usize, j: usize| -> u32 { (i * stride + j) as u32 };
     for i in 0..theta_steps {
@@ -379,6 +453,20 @@ pub fn generate(p: &ShellParams) -> Mesh {
             indices.extend_from_slice(&[a, b, c, a, c, e]);
         }
     }
+    indices
+}
+
+/// Smooth per-vertex normals: accumulate face normals onto their vertices, fuse
+/// the φ-seam duplicate with col 0 so the wrap shows no lighting seam, then
+/// normalise. Returns a buffer parallel to `positions`.
+fn smooth_normals(positions: &[f32], indices: &[u32], tess: &Tessellation) -> Vec<f32> {
+    let Tessellation {
+        theta_verts,
+        cols,
+        stride,
+        ..
+    } = *tess;
+    let mut normals = vec![0.0f32; theta_verts * stride * 3];
 
     // Smooth normals: accumulate face normals onto vertices, then normalise.
     for tri in indices.chunks_exact(3) {
@@ -430,11 +518,15 @@ pub fn generate(p: &ShellParams) -> Mesh {
             nrm[2] /= len;
         }
     }
+    normals
+}
 
-    // Normalise to a unit sphere centred at the origin. Raw coords span a huge
-    // range (g = e^(kθ) can reach thousands), which wrecks downstream float
-    // precision (BVH / ray tracing). Translate + uniform scale leave the
-    // already-unit normals unchanged.
+/// Translate to the centroid and uniformly scale `positions` to the unit sphere.
+///
+/// Raw coords span a huge range (g = e^(kθ) can reach thousands), which wrecks
+/// downstream float precision (BVH / ray tracing). Translate + uniform scale
+/// leave the already-unit normals unchanged, so normals are not touched here.
+fn normalize_to_unit_sphere(positions: &mut [f32]) {
     let vcount = (positions.len() / 3).max(1) as f32;
     let (mut cx, mut cy, mut cz) = (0.0f32, 0.0f32, 0.0f32);
     for v in positions.chunks_exact(3) {
@@ -456,19 +548,26 @@ pub fn generate(p: &ShellParams) -> Mesh {
         v[1] = (v[1] - cy) * scale;
         v[2] = (v[2] - cz) * scale;
     }
+}
 
-    // --- Orient for display ---------------------------------------------------
-    // The coil is built around +Z with the apex (smallest whorl) at the low-z end
-    // and the body whorl / aperture at the high-z end. For viewing we want a
-    // canonical pose: the coil axis vertical with the cone pointing *down*, and
-    // the body whorl turned to face the camera (+Z). Two rotations about the now-
-    // centred origin do it — rotations preserve the unit normalisation above and
-    // keep the (already unit) normals valid.
-    //
-    // 1) Spin about the coil axis (Z) so the body whorl's azimuth points to
-    //    (0,-1); 2) tip upright with Rx(-90°): (x,y,z) -> (x, z, -y), which sends
-    //    +Z (coil axis) -> +Y (up), the low-z apex -> -Y (bottom), and the body
-    //    whorl -> +Z (front).
+/// Rotate the centred mesh into the canonical display pose: coil axis vertical,
+/// cone pointing down, body whorl facing the camera (+Z). Rotations preserve the
+/// unit normalisation and the (already unit) normals, so both buffers are
+/// rotated in place.
+///
+/// The coil is built around +Z with the apex (smallest whorl) at the low-z end
+/// and the body whorl / aperture at the high-z end. Two rotations about the now-
+/// centred origin pose it: 1) spin about the coil axis (Z) so the body whorl's
+/// azimuth points to (0,-1); 2) tip upright with Rx(-90°): (x,y,z) -> (x, z, -y),
+/// which sends +Z (coil axis) -> +Y (up), the low-z apex -> -Y (bottom), and the
+/// body whorl -> +Z (front).
+fn orient_for_display(positions: &mut [f32], normals: &mut [f32], tess: &Tessellation) {
+    let Tessellation {
+        theta_verts,
+        cols,
+        stride,
+        ..
+    } = *tess;
     let last = (theta_verts - 1) * stride;
     let (mut ax, mut ay) = (0.0f32, 0.0f32);
     for c in 0..cols {
@@ -492,6 +591,29 @@ pub fn generate(p: &ShellParams) -> Mesh {
     for nrm in normals.chunks_exact_mut(3) {
         orient(nrm);
     }
+}
+
+/// Generate a shell surface by sweeping an elliptical aperture along a
+/// logarithmic helico-spiral, then attaching the Layer-3 pigment field.
+///
+/// The pipeline: clamp → plan tessellation → sweep the aperture → build indices
+/// → smooth normals → unit-normalise → orient for display → attach pigment. Each
+/// step is a self-contained helper above.
+pub fn generate(p: &ShellParams) -> Mesh {
+    // Single, total clamp: every shape field is now guaranteed within its
+    // `PARAM_RANGES` bound, so the rest of the pipeline (tessellation / mesh math)
+    // never sees an out-of-range value.
+    let p = p.clamped();
+    let p = &p;
+
+    let prof = Profiles::new(p);
+    let tess = plan_tessellation(p, &prof);
+
+    let (mut positions, uvs) = sweep_surface(p, &prof, &tess);
+    let indices = build_indices(&tess);
+    let mut normals = smooth_normals(&positions, &indices, &tess);
+    normalize_to_unit_sphere(&mut positions);
+    orient_for_display(&mut positions, &mut normals, &tess);
 
     // Layer 3: pigment laid down by the same growth process (shares `seed` and
     // the coil extent); independent grid resolution, mapped via the UVs above.
