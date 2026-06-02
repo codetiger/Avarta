@@ -512,33 +512,48 @@ fn pigment_field(p: &ShellParams) -> (Vec<u8>, u32, u32) {
         return (out, nx as u32, ny as u32);
     }
 
-    // --- Gray–Scott line (stripe regime) advanced over growth-time -----------
+    // --- Gray–Scott line advanced over growth-time --------------------------
+    // Feature scale sets the simulation's φ resolution: the GS stripe wavelength
+    // is fixed (so the pattern is always reliable), so fewer sim cells spread
+    // the same wavelength over fewer features around the lip (coarse), more
+    // cells over more features (fine). The ny_sim line is resampled to the
+    // PIG_PHI output rows, so the texture stays smooth either way.
     let (f, k) = (0.035, 0.060); // Pearson stripe/maze regime → periodic peaks
-    let diff = lerp(0.7, 1.6, scale); // larger scale → broader, fewer stripes
-    let du = 0.16 * diff;
-    let dv = 0.08 * diff;
+    let du = 0.16;
+    let dv = 0.08;
+    // Snap to a multiple of the seed spacing so nucleation wraps evenly around
+    // the periodic lip (no seam where the last gap differs from the rest).
+    const SEED_SPACING: usize = 16;
+    let ny_sim = (((lerp(384.0, 48.0, scale) / SEED_SPACING as f32).round() as usize) * SEED_SPACING)
+        .max(2 * SEED_SPACING); // large→fine, small→coarse
     let substeps = lerp(2.0, 12.0, density).round().max(1.0) as usize;
-    // A drift advects the stripe pattern around the lip as the shell grows, so
-    // it leans into diagonals. Chevrons reuse the same drifted field but mirror
-    // it across the lip midline (below) so the two opposing diagonals meet in
-    // V-shaped tents (Oliva / Conus textile).
+    // Obliqueness advects the pattern around the lip as the shell grows → a
+    // diagonal lean, on *every* stripe regime (so the control always does
+    // something). Oblique/chevron carry a baseline lean — that is their
+    // character — and angle adds to it. Chevrons additionally mirror the drifted
+    // field across the lip midline so the two leans meet in V-tents (below).
+    // Keep the per-step drift gentle — it accumulates over the long coil into a
+    // strong lean, and too large a per-step advection breaks the stripes into
+    // dashes instead of leaning them.
     let drift_base = match regime {
-        PigRegime::ObliqueLines => 0.15,
-        PigRegime::Chevrons => 0.18,
+        PigRegime::ObliqueLines => 0.08,
+        PigRegime::Chevrons => 0.12,
         _ => 0.0,
     };
-    let drift = drift_base * lerp(0.3, 1.0, angle);
+    let drift = drift_base + 0.06 * angle;
 
-    let mut u = vec![1.0f32; ny];
-    let mut v = vec![0.0f32; ny];
-    // Regular nucleation seeds so the pattern is clean and deterministic at
-    // irregularity 0; irregularity sprinkles extra seeds for natural variation.
-    for j in (0..ny).step_by(16) {
+    let mut u = vec![1.0f32; ny_sim];
+    let mut v = vec![0.0f32; ny_sim];
+    // Nucleate at the constant ~intrinsic stripe spacing (≈ the GS wavelength at
+    // this du/dv), so the stripes are stable (neither merge nor split) and the
+    // feature count is ny_sim / spacing — i.e. driven by `scale` via ny_sim.
+    // irregularity sprinkles extra seeds for natural variation.
+    for j in (0..ny_sim).step_by(SEED_SPACING) {
         v[j] = 0.5;
         u[j] = 0.25;
     }
     if irreg > 0.0 {
-        for j in 0..ny {
+        for j in 0..ny_sim {
             if rand01(seed, j as i32) < irreg * 0.15 {
                 v[j] = 0.5;
                 u[j] = 0.25;
@@ -546,17 +561,17 @@ fn pigment_field(p: &ShellParams) -> (Vec<u8>, u32, u32) {
         }
     }
 
-    let mut un = vec![0.0f32; ny];
-    let mut vn = vec![0.0f32; ny];
+    let mut un = vec![0.0f32; ny_sim];
+    let mut vn = vec![0.0f32; ny_sim];
     for _ in 0..PIG_BURN_IN {
         gs_step(&u, &v, &mut un, &mut vn, du, dv, f, k, 0.0);
         std::mem::swap(&mut u, &mut un);
         std::mem::swap(&mut v, &mut vn);
     }
 
-    // Raw activator field; normalised after the sweep so contrast mapping is
-    // robust regardless of the regime's absolute concentration range.
-    let mut raw = vec![0.0f32; nx * ny];
+    // Raw activator field on the sim grid; normalised after the sweep so the
+    // contrast mapping is robust regardless of the regime's concentration range.
+    let mut raw = vec![0.0f32; nx * ny_sim];
     for i in 0..nx {
         for _ in 0..substeps {
             gs_step(&u, &v, &mut un, &mut vn, du, dv, f, k, drift);
@@ -564,11 +579,11 @@ fn pigment_field(p: &ShellParams) -> (Vec<u8>, u32, u32) {
             std::mem::swap(&mut v, &mut vn);
         }
         if irreg > 0.0 && rand01(seed ^ 0xABCD, i as i32) < irreg * 0.05 {
-            let j = (rand01(seed ^ 0x1234, i as i32) * ny as f32) as usize % ny;
+            let j = (rand01(seed ^ 0x1234, i as i32) * ny_sim as f32) as usize % ny_sim;
             v[j] = 0.5;
             u[j] = 0.25;
         }
-        for j in 0..ny {
+        for j in 0..ny_sim {
             raw[j * nx + i] = v[j];
         }
     }
@@ -579,10 +594,12 @@ fn pigment_field(p: &ShellParams) -> (Vec<u8>, u32, u32) {
         hi = hi.max(x);
     }
     let span = (hi - lo).max(1e-6);
+    // Resample the ny_sim line onto the PIG_PHI (`ny`) output rows.
     for i in 0..nx {
         let ax = axial_at(i);
-        for j in 0..ny {
-            let gs = (raw[j * nx + i] - lo) / span;
+        for jo in 0..ny {
+            let js = jo * ny_sim / ny;
+            let gs = (raw[js * nx + i] - lo) / span;
             // Spots = RD stripes ∧ transverse rhythm (dots at intersections);
             // reticulated = RD stripes ∨ rhythm (net); chevrons = the drifted
             // diagonal ∨ its φ-mirror (the two leans meet in V-tents); others use
@@ -591,12 +608,12 @@ fn pigment_field(p: &ShellParams) -> (Vec<u8>, u32, u32) {
                 PigRegime::Spots => gs * ax,
                 PigRegime::Reticulated => gs.max(ax),
                 PigRegime::Chevrons => {
-                    let mirror = (raw[(ny - 1 - j) * nx + i] - lo) / span;
+                    let mirror = (raw[(ny_sim - 1 - js) * nx + i] - lo) / span;
                     gs.max(mirror)
                 }
                 _ => gs,
             };
-            out[j * nx + i] = (edge(combined) * 255.0).round().clamp(0.0, 255.0) as u8;
+            out[jo * nx + i] = (edge(combined) * 255.0).round().clamp(0.0, 255.0) as u8;
         }
     }
     (out, nx as u32, ny as u32)
