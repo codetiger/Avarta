@@ -1,7 +1,7 @@
 // Mesh-extraction bridge — gets a shell mesh out of the Rust core the *same way
 // the web page does*: through the existing wasm-bindgen package in ../web/pkg.
 // It does NOT touch the Rust crates and builds nothing — it loads the already-
-// built shell_wasm and calls the same `generate(params)` the browser calls.
+// built avarta_wasm and calls the same `generate(params)` the browser calls.
 //
 // Usage:  node extract_mesh.mjs '<params-json>'      (params on argv), or
 //         echo '<params-json>' | node extract_mesh.mjs
@@ -14,10 +14,10 @@
 // via the uvs. Python reads this with numpy.frombuffer — no big JSON to parse.
 
 import { readFileSync } from "node:fs";
-import { initSync, generate } from "../web/pkg/shell_wasm.js";
+import { initSync, generate } from "../web/pkg/avarta_wasm.js";
 
 // Initialise the wasm synchronously from the same .wasm the website ships.
-const wasmPath = new URL("../web/pkg/shell_wasm_bg.wasm", import.meta.url);
+const wasmPath = new URL("../web/pkg/avarta_wasm_bg.wasm", import.meta.url);
 initSync({ module: readFileSync(wasmPath) });
 
 function readParams() {

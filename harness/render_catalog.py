@@ -46,7 +46,7 @@ COVERAGE_COLOR = {"good": "#3fa45b", "silhouette": "#c8a35a", "blocked": "#c0524
 # Per-species Layer-3 pigmentation (RD `pig_*`) + Layer-4 `palette`, keyed by
 # slug — mirrors the web viewer's SPECIES table (web/index.html) and adds the
 # extra harness-only species (Oliva/Conus/Cypraea …). Regime indices match
-# PigRegime in shell-core: 0 solid · 1 spiral bands · 2 axial stripes ·
+# PigRegime in avarta-core: 0 solid · 1 spiral bands · 2 axial stripes ·
 # 3 oblique lines · 4 chevrons/tented · 5 spots · 6 reticulated. Unlisted slugs
 # fall back to DEFAULT_PIG.
 REGIME_NAMES = ["solid", "spiral bands", "axial stripes", "oblique lines",

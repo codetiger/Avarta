@@ -1,6 +1,7 @@
-# Spiral
+# Avarta
 
-A mathematical generator for spiral shell shapes (snails, *Nautilus*, augers …).
+*Avarta* (Sanskrit आवर्त, "whorl / coil") is a mathematical generator for spiral
+seashell shapes (snails, *Nautilus*, augers …).
 Mesh math lives in a small Rust crate compiled to WebAssembly; a Vite-bundled web
 app renders it with Three.js — a real-time **PBR++** viewport (image-based
 lighting, physical material with translucency/iridescence/clearcoat, ambient
@@ -13,9 +14,9 @@ See [`parameters.md`](./parameters.md) for the parameter model and
 ## Layout
 
 ```
-crates/shell-core   Pure Rust mesh math (Raup W/D/T helico-spiral + ornament + seeded jitter).
-crates/shell-wasm   wasm-bindgen adapter -> JS typed arrays (positions/normals/uvs/indices).
-web/                Vite app: index.html + <shell-viewer> component (+ generated pkg/).
+crates/avarta-core   Pure Rust mesh math (Raup W/D/T helico-spiral + ornament + seeded jitter).
+crates/avarta-wasm   wasm-bindgen adapter -> JS typed arrays (positions/normals/uvs/indices).
+web/                Vite app: index.html + <avarta-viewer> component (+ generated pkg/).
 .github/workflows   GitHub Pages build & deploy (wasm + Vite).
 ```
 
@@ -29,10 +30,10 @@ web/                Vite app: index.html + <shell-viewer> component (+ generated
 
 ```sh
 # 1. test the pure math natively
-cargo test -p shell-core
+cargo test -p avarta-core
 
 # 2. build the wasm package into web/pkg/
-wasm-pack build crates/shell-wasm --target web --out-dir ../../web/pkg
+wasm-pack build crates/avarta-wasm --target web --out-dir ../../web/pkg
 
 # 3. run the Vite dev server (installs deps on first run)
 cd web && npm install && npm run dev
@@ -53,7 +54,7 @@ instance — required for the path tracer) and treats the `.wasm` as an asset.
 
 ## Embed elsewhere
 
-The `<shell-viewer>` element renders into its own shadow DOM. Because the app is
+The `<avarta-viewer>` element renders into its own shadow DOM. Because the app is
 now bundled, embed it by pointing at the built component bundle from `web/dist`
 (rather than the raw source). Attributes drive the shape, e.g.
-`<shell-viewer w="2.0" d="0.15" t="1.5" n="5" aspect="1.0">`.
+`<avarta-viewer w="2.0" d="0.15" t="1.5" n="5" aspect="1.0">`.

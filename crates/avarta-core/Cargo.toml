@@ -1,5 +1,5 @@
 [package]
-name = "shell-core"
+name = "avarta-core"
 version = "0.1.0"
 edition = "2021"
 description = "Pure-Rust mesh generator for spiral shell shapes (Raup W/D/T model)."

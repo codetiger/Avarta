@@ -14,7 +14,7 @@ The model has four layers, each built on top of the previous one:
 > This document only defines *what* the parameters mean and their natural ranges.
 >
 > Implementation note: the **enforced** ranges (slider `min`/`max`/`step` + input clamping) live in
-> one place — `PARAM_RANGES` in `crates/shell-core/src/lib.rs`. The mesh generator clamps every input
+> one place — `PARAM_RANGES` in `crates/avarta-core/src/lib.rs`. The mesh generator clamps every input
 > to it and the web UI configures its sliders from it (via the wasm `param_ranges()` export), so the
 > two can't drift. The ranges in the tables below describe **biological intent**; the enforced ones
 > span the real **coiled-shell** subset of that (the degenerate high-W limpet/single-bivalve-valve
@@ -129,7 +129,7 @@ a byproduct of the *same growth sweep* that builds the geometry, not a separate 
 **reaction–diffusion** line (Meinhardt, *The Algorithmic Beauty of Sea Shells*) runs around the lip
 (φ) and is stepped once per growth ring (θ); the 2-D surface pattern is the space–time record of that
 line, so it maps onto the mesh's existing UVs (`u=θ`, `v=φ`) with no distortion. Implemented in
-`crates/shell-core` (`pigment_field`) and emitted as a pigment texture alongside the mesh.
+`crates/avarta-core` (`pigment_field`) and emitted as a pigment texture alongside the mesh.
 
 The core is a Gray–Scott RD line (robust across regimes; its `(F,K)` sit in Pearson's pattern space).
 A **regime** selects/steers the configuration — a drift term advects the pattern around the lip
@@ -159,7 +159,7 @@ The actual colors filling the pattern, plus surface finish. Applied **viewer-sid
 single-channel pigment field (0 = ground … 1 = pigment), and the viewer maps it through a 3-stop
 palette (`base → accent → pattern`) into the material's colour map. Keeping colour out of the RD core
 means re-colouring is a cheap texture re-bake — no geometry rebuild or RD rerun (`setPalette` in
-`web/shell-viewer.js`). The material finish stays on the Three.js `MeshPhysicalMaterial`.
+`web/avarta-viewer.js`). The material finish stays on the Three.js `MeshPhysicalMaterial`.
 
 | Param | Name | Meaning | Range / Type |
 |-------|------|---------|--------------|
@@ -190,7 +190,7 @@ The implemented generator uses **19 shape parameters** (Layers 1–2) plus **6 p
 | **Shape total** | | **19** |
 | Pigmentation (Layer 3) | pig_regime, pig_scale, pig_contrast, pig_density, pig_angle, pig_irregularity | 6 |
 
-Layer 3 (pigmentation, reaction–diffusion) is implemented in `crates/shell-core` and emitted as a
+Layer 3 (pigmentation, reaction–diffusion) is implemented in `crates/avarta-core` and emitted as a
 pigment texture; Layer 4 (palette + finish) is applied viewer-side. Tessellation (`seg_theta`,
 `seg_phi`) is **internal** — auto-derived from the ornament frequency so ribs/cords/projections never
 facet — not a user parameter; the pigment grid resolution is likewise internal. Every ornament

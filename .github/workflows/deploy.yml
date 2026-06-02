@@ -35,14 +35,14 @@ jobs:
           key: cargo-${{ hashFiles('**/Cargo.toml') }}
 
       - name: Run native tests
-        run: cargo test -p shell-core
+        run: cargo test -p avarta-core
 
       - uses: jetli/wasm-pack-action@v0.4.0
         with:
           version: latest
 
       - name: Build wasm into web/pkg
-        run: wasm-pack build crates/shell-wasm --target web --release --out-dir ../../web/pkg
+        run: wasm-pack build crates/avarta-wasm --target web --release --out-dir ../../web/pkg
 
       - uses: actions/setup-node@v4
         with:

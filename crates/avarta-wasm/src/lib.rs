@@ -1,9 +1,9 @@
-//! Thin wasm-bindgen boundary over `shell-core`.
+//! Thin wasm-bindgen boundary over `avarta-core`.
 //!
 //! JS calls `generate({ w, d, t, n, aspect, seg_theta, seg_phi })` and gets back
 //! a `JsMesh` whose getters return typed arrays ready for Three.js BufferAttributes.
 
-use shell_core::{generate as core_generate, ShellParams, PARAM_RANGES, PIGMENT_RANGES};
+use avarta_core::{generate as core_generate, ShellParams, PARAM_RANGES, PIGMENT_RANGES};
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen(start)]

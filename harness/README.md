@@ -6,7 +6,7 @@ For each species it gets the mesh out of the Rust core *through the existing was
 it, and pairs the render with a real reference photo in `report.html` for **human
 review** — the script renders, you judge what doesn't match.
 
-The Rust crates (`shell-core`, `shell-wasm`) are **not modified or rebuilt** by any
+The Rust crates (`avarta-core`, `avarta-wasm`) are **not modified or rebuilt** by any
 of this.
 
 ## Pipeline
@@ -35,7 +35,7 @@ reference/<slug>.jpg ─────────▶ report.html   (real photo | 
 - **Node.js** on PATH (to run the wasm the same way the web page does).
 - **Python 3.9+** with the deps in `requirements.txt` (`pyvista`, `numpy`).
 - A built `../web/pkg` (it's already in the repo; rebuild only if the Rust core
-  changes, via `wasm-pack build crates/shell-wasm --target web --out-dir ../../web/pkg`).
+  changes, via `wasm-pack build crates/avarta-wasm --target web --out-dir ../../web/pkg`).
 
 ## Setup & run
 

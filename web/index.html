@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Spiral — shell mesh generator</title>
+    <title>Avarta — seashell mesh generator</title>
     <style>
       :root { color-scheme: dark; }
       * { box-sizing: border-box; }
@@ -97,7 +97,7 @@
         width: 100%; padding: 7px 8px; margin-bottom: 8px;
         background: #161b22; color: #d8dee9; border: 1px solid #2a313b; border-radius: 6px;
       }
-      shell-viewer { width: 100%; height: 100%; }
+      avarta-viewer { width: 100%; height: 100%; }
 
       /* Collapsible parameter groups (native <details>, styled like the old
          section headers with a disclosure triangle). */
@@ -146,8 +146,8 @@
   </head>
   <body>
     <header class="titlebar">
-      <h1>Spiral</h1>
-      <p class="sub">Logarithmic helico-spiral shell generator (Rust → WASM).</p>
+      <h1>Avarta</h1>
+      <p class="sub">Logarithmic helico-spiral seashell generator (Rust → WASM).</p>
     </header>
 
     <aside class="left">
@@ -165,7 +165,7 @@
       </section>
     </aside>
 
-    <shell-viewer id="viewer"></shell-viewer>
+    <avarta-viewer id="viewer"></avarta-viewer>
 
     <aside class="right">
       <section class="pane species-pane">
@@ -179,7 +179,7 @@
     </aside>
 
     <script type="module">
-      import "./shell-viewer.js";
+      import "./avarta-viewer.js";
 
       const viewer = document.getElementById("viewer");
       const form = document.getElementById("controls");
@@ -250,7 +250,7 @@
         { mode: "solid+wireframe", label: "Solid + wireframe" },
       ];
       // Layer-3 pigmentation pattern regimes (index → label), matching PigRegime
-      // in crates/shell-core. A reaction–diffusion engine generates the pattern
+      // in crates/avarta-core. A reaction–diffusion engine generates the pattern
       // as the shell grows — there is no manual colour picking any more.
       const REGIMES = [
         "Solid", "Spiral bands", "Axial stripes", "Oblique lines",
@@ -269,7 +269,7 @@
         pig_regime: 1, pig_scale: 0.5, pig_contrast: 0.6,
         pig_density: 0.5, pig_angle: 0.5, pig_irregularity: 0.15,
       };
-      // Fallback pigment ranges (mirror PIGMENT_RANGES in shell-core), used only
+      // Fallback pigment ranges (mirror PIGMENT_RANGES in avarta-core), used only
       // if pigment_ranges() is unavailable. Replaced from Rust in initRanges().
       const FALLBACK_PIGMENT = [
         { key: "pig_regime",       label: "Pattern",       min: 0, max: 6, step: 1,    default: 0,   integer: true },
@@ -283,7 +283,7 @@
 
       // Fallback ranges, used ONLY if param_ranges() is unavailable (offline /
       // wasm load failure) so the panel still renders. The authoritative source
-      // is PARAM_RANGES in crates/shell-core.
+      // is PARAM_RANGES in crates/avarta-core.
       const FALLBACK_RANGES = [
         { key: "w",      min: 1.05, max: 8.0,  step: 0.01, default: 2.0,  integer: false },
         { key: "d",      min: 0.0,  max: 0.95, step: 0.01, default: 0.15, integer: false },

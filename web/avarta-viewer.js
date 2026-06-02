@@ -1,4 +1,4 @@
-// <shell-viewer> — a custom element that renders a shell mesh.
+// <avarta-viewer> — a custom element that renders a shell mesh.
 //
 // Bundled with Vite: three + addons + the path tracer come from npm (one deduped
 // `three` instance), and the wasm is a Vite asset. The path tracer (Phase 2
@@ -13,8 +13,8 @@ import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { GTAOPass } from "three/addons/postprocessing/GTAOPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
-import init, { generate, param_ranges, pigment_ranges } from "./pkg/shell_wasm.js";
-import wasmUrl from "./pkg/shell_wasm_bg.wasm?url";
+import init, { generate, param_ranges, pigment_ranges } from "./pkg/avarta_wasm.js";
+import wasmUrl from "./pkg/avarta_wasm_bg.wasm?url";
 // A real (CC0) equirectangular HDRI — drives both the IBL reflections and the
 // visible background, so the scene looks photographed rather than floating on a
 // flat colour. Swap this file to change the environment.
@@ -153,7 +153,7 @@ function buildPigmentTexture(pigment, w, h, palette, renderer) {
   return tex;
 }
 
-class ShellViewer extends HTMLElement {
+class AvartaViewer extends HTMLElement {
   static get observedAttributes() {
     return ATTRS;
   }
@@ -309,7 +309,7 @@ class ShellViewer extends HTMLElement {
       return true;
     } catch (e) {
       console.warn(
-        "[shell-viewer] path tracer unavailable:",
+        "[avarta-viewer] path tracer unavailable:",
         e.stack || e.message,
       );
       this._mode = "live";
@@ -364,7 +364,7 @@ class ShellViewer extends HTMLElement {
       undefined,
       (err) =>
         console.warn(
-          "[shell-viewer] HDRI environment failed to load; keeping procedural fallback:",
+          "[avarta-viewer] HDRI environment failed to load; keeping procedural fallback:",
           err,
         ),
     );
@@ -462,7 +462,7 @@ class ShellViewer extends HTMLElement {
         // pigment grid is independent of tessellation, so the pattern stays crisp.
         m = generate({ ...DEFAULTS, seg_theta: 64, seg_phi: 32, ...params });
       } catch (e) {
-        console.warn("[shell-viewer] thumbnail generate failed:", e);
+        console.warn("[avarta-viewer] thumbnail generate failed:", e);
         out.push(null);
         continue;
       }
@@ -687,7 +687,7 @@ class ShellViewer extends HTMLElement {
     try {
       m = generate(this.params);
     } catch (e) {
-      console.error("[shell-viewer] generate failed:", e);
+      console.error("[avarta-viewer] generate failed:", e);
       return;
     }
     const positions = m.positions;
@@ -786,5 +786,5 @@ class ShellViewer extends HTMLElement {
   }
 }
 
-customElements.define("shell-viewer", ShellViewer);
-export { ShellViewer };
+customElements.define("avarta-viewer", AvartaViewer);
+export { AvartaViewer };
