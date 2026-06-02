@@ -13,7 +13,13 @@ import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { GTAOPass } from "three/addons/postprocessing/GTAOPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
-import init, { generate, param_ranges, pigment_ranges } from "./pkg/avarta_wasm.js";
+import init, {
+  generate,
+  param_ranges,
+  pigment_ranges,
+  encode_params,
+  decode_params,
+} from "./pkg/avarta_wasm.js";
 import wasmUrl from "./pkg/avarta_wasm_bg.wasm?url";
 // A real (CC0) equirectangular HDRI — drives both the IBL reflections and the
 // visible background, so the scene looks photographed rather than floating on a
@@ -230,6 +236,24 @@ class AvartaViewer extends HTMLElement {
   async pigmentRanges() {
     await ensureWasm();
     return pigment_ranges();
+  }
+
+  /**
+   * Encode a shape+pigment params object into a compact, URL-safe id (the mesh
+   * half of a share link). Lossless to the slider step. See `encode_id` in Rust.
+   */
+  async encodeParams(params) {
+    await ensureWasm();
+    return encode_params(params);
+  }
+
+  /**
+   * Decode a mesh share id back into a params object (clamped to range). Throws
+   * on a stale/corrupt id, so callers should fall back to defaults on error.
+   */
+  async decodeParams(id) {
+    await ensureWasm();
+    return decode_params(id);
   }
 
   /** Regenerate geometry from shape params. */

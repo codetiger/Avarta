@@ -398,11 +398,11 @@
       // if pigment_ranges() is unavailable. Replaced from Rust in initRanges().
       const FALLBACK_PIGMENT = [
         { key: "pig_regime",       label: "Pattern",       min: 0, max: 6, step: 1,    default: 0,   integer: true },
-        { key: "pig_scale",        label: "Feature scale", min: 0, max: 1, step: 0.01, default: 0.5, integer: false },
-        { key: "pig_contrast",     label: "Contrast",      min: 0, max: 1, step: 0.01, default: 0.5, integer: false },
-        { key: "pig_density",      label: "Density",       min: 0, max: 1, step: 0.01, default: 0.5, integer: false },
-        { key: "pig_angle",        label: "Obliqueness",   min: 0, max: 1, step: 0.01, default: 0.0, integer: false },
-        { key: "pig_irregularity", label: "Irregularity",  min: 0, max: 1, step: 0.01, default: 0.0, integer: false },
+        { key: "pig_scale",        label: "Feature scale", min: 0, max: 1, step: 0.02, default: 0.5, integer: false },
+        { key: "pig_contrast",     label: "Contrast",      min: 0, max: 1, step: 0.02, default: 0.5, integer: false },
+        { key: "pig_density",      label: "Density",       min: 0, max: 1, step: 0.02, default: 0.5, integer: false },
+        { key: "pig_angle",        label: "Obliqueness",   min: 0, max: 1, step: 0.02, default: 0.0, integer: false },
+        { key: "pig_irregularity", label: "Irregularity",  min: 0, max: 1, step: 0.02, default: 0.0, integer: false },
       ];
       let PIGMENT = FALLBACK_PIGMENT; // replaced with the Rust table in initRanges()
 
@@ -412,23 +412,23 @@
       const FALLBACK_RANGES = [
         { key: "w",      min: 1.05, max: 8.0,  step: 0.01, default: 2.0,  integer: false },
         { key: "d",      min: 0.0,  max: 0.95, step: 0.01, default: 0.15, integer: false },
-        { key: "t",      min: 0.0,  max: 12.0, step: 0.01, default: 1.5,  integer: false },
+        { key: "t",      min: 0.0,  max: 12.0, step: 0.05, default: 1.5,  integer: false },
         { key: "n",      min: 0.5,  max: 20.0, step: 0.1,  default: 5.0,  integer: false },
-        { key: "aspect", min: 0.3,  max: 4.0,  step: 0.01, default: 1.0,  integer: false },
+        { key: "aspect", min: 0.3,  max: 4.0,  step: 0.02, default: 1.0,  integer: false },
         { key: "rib_ax_count", min: 0, max: 40, step: 1,    default: 0, integer: true },
-        { key: "rib_ax_amp",   min: 0, max: 0.6, step: 0.01, default: 0, integer: false },
+        { key: "rib_ax_amp",   min: 0, max: 0.6, step: 0.02, default: 0, integer: false },
         { key: "rib_sp_count", min: 0, max: 60, step: 1,    default: 0, integer: true },
-        { key: "rib_sp_amp",   min: 0, max: 0.6, step: 0.01, default: 0, integer: false },
-        { key: "rib_sharp",    min: 0, max: 1,  step: 0.01, default: 0, integer: false },
+        { key: "rib_sp_amp",   min: 0, max: 0.6, step: 0.02, default: 0, integer: false },
+        { key: "rib_sharp",    min: 0, max: 1,  step: 0.02, default: 0, integer: false },
         { key: "proj_count",   min: 0, max: 30, step: 1,    default: 0, integer: true },
         { key: "proj_rows",    min: 0, max: 5,  step: 1,    default: 0, integer: true },
-        { key: "proj_pos",     min: 0, max: 6.2832, step: 0.01, default: 0, integer: false },
-        { key: "proj_size",    min: 0, max: 1.2, step: 0.01, default: 0, integer: false },
-        { key: "proj_sharp",   min: 0, max: 1,  step: 0.01, default: 0, integer: false },
+        { key: "proj_pos",     min: 0, max: 6.2832, step: 0.05, default: 0, integer: false },
+        { key: "proj_size",    min: 0, max: 1.2, step: 0.02, default: 0, integer: false },
+        { key: "proj_sharp",   min: 0, max: 1,  step: 0.02, default: 0, integer: false },
         { key: "varix_count",  min: 0, max: 6,  step: 1,    default: 0, integer: true },
-        { key: "varix_amp",    min: 0, max: 0.5, step: 0.01, default: 0, integer: false },
-        { key: "seed",         min: 0, max: 9999, step: 1,  default: 0, integer: true },
-        { key: "jitter",       min: 0, max: 1,  step: 0.01, default: 0, integer: false },
+        { key: "varix_amp",    min: 0, max: 0.5, step: 0.02, default: 0, integer: false },
+        { key: "seed",         min: 0, max: 255, step: 1,  default: 0, integer: true },
+        { key: "jitter",       min: 0, max: 1,  step: 0.02, default: 0, integer: false },
       ];
 
       // Populated from the range table in initRanges() (fallback values here).
@@ -499,6 +499,7 @@
           <button type="button" id="resetview" class="tool-btn icon" title="Reset view" aria-label="Reset view">⤢</button>
           <button type="button" id="render" class="tool-btn render-btn" title="Path-traced photo render">▶ Path Tracing</button>
           <button type="button" id="savepng" class="tool-btn icon" title="Save PNG" aria-label="Save PNG">⬇</button>
+          <button type="button" id="share" class="tool-btn icon" title="Copy share link" aria-label="Copy share link">🔗</button>
           <span id="rstatus"></span>`;
       }
 
@@ -564,6 +565,114 @@
         for (const b of document.querySelectorAll(".mode-btn"))
           b.classList.toggle("active", b.dataset.mode === mode);
         viewer.setRenderMode(mode);
+      }
+
+      // ---- Share link (compact id ⇄ full design) ---------------------------
+      // A share link is `#s=<mesh>.<look>`. The mesh half (shape + pigment) is
+      // encoded in Rust — lossless to the slider step (see encode_id). The look
+      // half (material finish + palette) is viewer-only, so it's packed here into
+      // the same URL-safe base64url. Both halves are *sparse* (mirroring encode_id):
+      // the look is [version][presence-mask byte][changed material indices][changed
+      // colours, RGB565], so a default finish or unchanged colours cost nothing.
+      const LOOK_VERSION = 1;
+      const b64urlEncode = (bytes) =>
+        btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+      const b64urlDecode = (s) => {
+        s = s.replace(/-/g, "+").replace(/_/g, "/");
+        s += "=".repeat((4 - (s.length % 4)) % 4);
+        return Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+      };
+      // Material value ⇄ step-index (0..N), mirroring the Rust quantisation.
+      const matIndex = (m, v) =>
+        Math.min(Math.max(Math.round((v - m.min) / m.step), 0), Math.round((m.max - m.min) / m.step));
+      const hexBytes = (hex) => {
+        const n = parseInt(hex.slice(1), 16);
+        return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+      };
+      const bytesHex = (r, g, b) =>
+        "#" + [r, g, b].map((x) => x.toString(16).padStart(2, "0")).join("");
+      // Colours are stored as RGB565 (2 bytes) instead of 24-bit — the lossy
+      // compromise that halves the palette's contribution to the id. Expansion
+      // back to 8-bit replicates the high bits so mid-tones don't darken.
+      const toRGB565 = (hex) => { const [r, g, b] = hexBytes(hex); return ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3); };
+      const fromRGB565 = (p) => {
+        const r5 = (p >> 11) & 31, g6 = (p >> 5) & 63, b5 = p & 31;
+        return bytesHex((r5 << 3) | (r5 >> 2), (g6 << 2) | (g6 >> 4), (b5 << 3) | (b5 >> 2));
+      };
+
+      function encodeLook() {
+        let mask = 0; // bits 0..3 = the 4 material sliders, bits 4..6 = the 3 colours
+        const body = [];
+        MATERIAL.forEach((m, i) => {
+          const idx = matIndex(m, parseFloat(document.getElementById("mat-" + m.key).value));
+          if (idx !== matIndex(m, m.value)) { mask |= 1 << i; body.push(idx); }
+        });
+        PALETTE.forEach((c, i) => {
+          const cur = toRGB565(document.getElementById("pal-" + c.key).value);
+          if (cur !== toRGB565(c.value)) { mask |= 1 << (4 + i); body.push((cur >> 8) & 255, cur & 255); }
+        });
+        return b64urlEncode([LOOK_VERSION, mask, ...body]);
+      }
+
+      function applyLook(seg) {
+        const bytes = b64urlDecode(seg);
+        if (bytes[0] !== LOOK_VERSION) throw new Error("unrecognised look segment");
+        const mask = bytes[1];
+        let k = 2;
+        // Present → decode; absent → reset to the default (deterministic either way).
+        MATERIAL.forEach((m, i) => {
+          document.getElementById("mat-" + m.key).value =
+            mask & (1 << i) ? m.min + bytes[k++] * m.step : m.value;
+        });
+        PALETTE.forEach((c, i) => {
+          if (mask & (1 << (4 + i))) {
+            document.getElementById("pal-" + c.key).value = fromRGB565((bytes[k] << 8) | bytes[k + 1]);
+            k += 2;
+          } else {
+            document.getElementById("pal-" + c.key).value = c.value;
+          }
+        });
+      }
+
+      // The 6 pigmentation values, in the same shape `generate`/encode expect.
+      const readPigment = () => {
+        const pig = { pig_regime: parseInt(document.getElementById("pig-regime").value, 10) };
+        for (const r of PIGMENT) {
+          if (r.key === "pig_regime") continue;
+          pig[r.key] = parseFloat(document.getElementById("pig-" + r.key).value);
+        }
+        return pig;
+      };
+
+      // Encode the whole current design (shape + pigment in Rust, look in JS).
+      async function buildShareId() {
+        const mesh = await viewer.encodeParams({ ...readForm(), ...readPigment() });
+        return mesh + "." + encodeLook();
+      }
+
+      // Apply a share id to the controls, then rebuild through the normal update
+      // pathways. Returns false (and changes nothing observable) on a bad link.
+      async function applyShareId(idStr) {
+        try {
+          const [meshSeg, lookSeg] = idStr.split(".");
+          const p = await viewer.decodeParams(meshSeg); // throws on a stale/corrupt id
+          for (const f of FIELDS) if (f in p) form.elements[f].value = p[f];
+          document.getElementById("pig-regime").value = Math.round(p.pig_regime);
+          for (const r of PIGMENT) {
+            if (r.key === "pig_regime") continue;
+            const el = document.getElementById("pig-" + r.key);
+            if (el) el.value = p[r.key];
+          }
+          if (lookSeg) applyLook(lookSeg);
+          update();
+          updatePigment();
+          updatePalette();
+          updateMaterial();
+          return true;
+        } catch (e) {
+          console.warn("ignoring invalid share link", e);
+          return false;
+        }
       }
 
       // ---- Mobile drawer / tab controller ----------------------------------
@@ -760,7 +869,7 @@
           document.getElementById("mat-" + f).addEventListener("input", updateMaterial);
 
         document.getElementById("dice").addEventListener("click", () => {
-          form.elements["seed"].value = Math.floor(Math.random() * 10000);
+          form.elements["seed"].value = Math.floor(Math.random() * 256);
           update();
         });
 
@@ -786,6 +895,30 @@
           if (rendering) rstatus.textContent = `path-tracing… ${e.detail.samples} samples (drag to re-aim)`;
         });
         document.getElementById("savepng").addEventListener("click", () => viewer.saveImage("avarta.png"));
+
+        // Share: copy a self-contained link to the clipboard. The address bar is
+        // left untouched, so the page URL never shows the encoded design.
+        document.getElementById("share").addEventListener("click", async () => {
+          let id;
+          try {
+            id = await buildShareId();
+          } catch (e) {
+            console.warn("could not build share link", e);
+            return;
+          }
+          const url = location.origin + location.pathname + location.search + "#s=" + id;
+          let copied = false;
+          try {
+            await navigator.clipboard.writeText(url);
+            copied = true;
+          } catch {
+            window.prompt("Copy this share link:", url); // clipboard blocked → manual copy
+          }
+          if (copied && !rendering) {
+            rstatus.textContent = "Link copied!";
+            setTimeout(() => { if (!rendering) rstatus.textContent = ""; }, 1600);
+          }
+        });
       }
 
       // Pull the authoritative ranges from Rust (via wasm), build the panel from
@@ -815,14 +948,23 @@
 
       buildTabbar();       // bottom tabs (mobile)
       buildToolbar();      // viewport toolbar (header)
-      initRanges().then(() => {
+      initRanges().then(async () => {
         buildColour();     // pattern + palette + material — the "look" section
         setupTabs();       // mobile drawer/tab controller
         wireEvents();
-        update();          // push initial geometry values
-        updatePigment();   // push initial pigmentation pattern (RD)
-        updatePalette();   // push initial palette
-        updateMaterial();  // push initial material finish
+        // A `#s=` share link reproduces a saved design; otherwise show the demo.
+        const hash = location.hash;
+        const shared = hash.startsWith("#s=") && (await applyShareId(hash.slice(3)));
+        // Consume the link: strip `#s=…` so the address bar stays clean and a
+        // refresh won't re-apply it. Done whether or not it decoded.
+        if (hash.startsWith("#s="))
+          history.replaceState(null, "", location.pathname + location.search);
+        if (!shared) {
+          update();          // push initial geometry values
+          updatePigment();   // push initial pigmentation pattern (RD)
+          updatePalette();   // push initial palette
+          updateMaterial();  // push initial material finish
+        }
         setMode("solid");  // default display mode
         loadThumbnails();  // fill the species browser with rendered thumbnails
       });

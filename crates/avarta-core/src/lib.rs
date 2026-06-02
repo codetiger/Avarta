@@ -7,6 +7,7 @@
 //! No JS/wasm dependencies, so this crate is unit-testable with plain `cargo test`.
 
 mod geometry;
+mod idcodec;
 mod mesh;
 mod noise;
 mod params;
@@ -14,7 +15,9 @@ mod pigment;
 
 pub use geometry::generate;
 pub use mesh::Mesh;
-pub use params::{ParamRange, ShellParams, PARAM_RANGES, PIGMENT_RANGES};
+pub use params::{
+    decode_id, encode_id, IdError, ParamRange, ShellParams, PARAM_RANGES, PIGMENT_RANGES,
+};
 
 #[cfg(test)]
 mod tests {
@@ -94,6 +97,148 @@ mod tests {
                 r.key
             );
         }
+    }
+
+    #[test]
+    fn share_id_round_trips_within_one_step() {
+        // Encoding quantises each param to its slider step, so decoding returns a
+        // value within half a step of the original — and re-encoding a decoded id
+        // is byte-identical (the id is stable / idempotent).
+        let samples = [
+            ShellParams::default(),
+            ShellParams {
+                w: 3.27,
+                d: 0.4,
+                t: 6.1,
+                n: 12.3,
+                aspect: 2.5,
+                rib_ax_count: 18.0,
+                rib_ax_amp: 0.33,
+                rib_sp_count: 25.0,
+                rib_sp_amp: 0.21,
+                rib_sharp: 0.7,
+                proj_count: 11.0,
+                proj_rows: 3.0,
+                proj_pos: 2.4,
+                proj_size: 0.55,
+                proj_sharp: 0.8,
+                varix_count: 4.0,
+                varix_amp: 0.28,
+                seed: 4242.0,
+                jitter: 0.65,
+                pig_regime: 5.0,
+                pig_scale: 0.3,
+                pig_contrast: 0.9,
+                pig_density: 0.15,
+                pig_angle: 0.6,
+                pig_irregularity: 0.45,
+                ..ShellParams::default()
+            },
+        ];
+        for p in &samples {
+            let id = encode_id(p);
+            assert!(
+                id.bytes()
+                    .all(|c| c.is_ascii_alphanumeric() || c == b'-' || c == b'_'),
+                "id must be URL-safe: {id}"
+            );
+            let q = decode_id(&id).expect("a freshly encoded id must decode");
+            let base = p.clamped();
+            for r in PARAM_RANGES.iter().chain(PIGMENT_RANGES.iter()) {
+                let a = base.field(r.key).unwrap();
+                let b = q.field(r.key).unwrap();
+                assert!(
+                    (a - b).abs() <= r.step * 0.5 + 1e-4,
+                    "{}: {a} vs decoded {b} exceeds half a step ({})",
+                    r.key,
+                    r.step
+                );
+            }
+            assert_eq!(encode_id(&q), id, "re-encoding a decoded id must be stable");
+        }
+    }
+
+    #[test]
+    fn share_id_preserves_integer_and_extreme_params_exactly() {
+        // Integer-valued params and table extremes are step-aligned, so they must
+        // survive a round trip with no drift at all.
+        let p = ShellParams {
+            rib_ax_count: 40.0,
+            rib_sp_count: 60.0,
+            proj_count: 30.0,
+            proj_rows: 5.0,
+            varix_count: 6.0,
+            seed: 255.0,
+            pig_regime: 6.0,
+            ..ShellParams::default()
+        };
+        let q = decode_id(&encode_id(&p)).unwrap();
+        for key in [
+            "rib_ax_count",
+            "rib_sp_count",
+            "proj_count",
+            "proj_rows",
+            "varix_count",
+            "seed",
+            "pig_regime",
+        ] {
+            assert_eq!(p.field(key), q.field(key), "{key} integer param drifted");
+        }
+    }
+
+    #[test]
+    fn decode_id_rejects_garbage_without_panicking() {
+        use crate::idcodec::{base64url_decode, base64url_encode};
+        assert!(matches!(decode_id(""), Err(IdError::BadLength)));
+        assert!(matches!(decode_id("!!!!"), Err(IdError::BadChar)));
+        // Valid chars but a byte 0 (version 0) this build doesn't understand:
+        assert!(decode_id("AAAA").is_err());
+        let good = encode_id(&ShellParams::default());
+        // Truncation (a common copy/paste corruption) → a length error, never a panic.
+        assert!(decode_id(&good[..good.len() - 2]).is_err());
+        // Correct length but an unknown version byte → BadVersion.
+        let mut bytes = base64url_decode(&good).unwrap();
+        bytes[0] = 0xFF;
+        assert!(matches!(
+            decode_id(&base64url_encode(&bytes)),
+            Err(IdError::BadVersion)
+        ));
+    }
+
+    #[test]
+    fn share_id_is_compact_for_default_heavy_shells() {
+        // The sparse format pays only for non-default params, so a plain shell
+        // encodes far shorter than a fully ornamented one, and an all-default
+        // shell round-trips through a tiny id.
+        let plain = encode_id(&ShellParams::default());
+        let loaded = encode_id(&ShellParams {
+            rib_ax_count: 14.0,
+            rib_ax_amp: 0.2,
+            rib_sp_count: 20.0,
+            rib_sp_amp: 0.15,
+            rib_sharp: 0.5,
+            proj_count: 10.0,
+            proj_rows: 2.0,
+            proj_pos: 1.0,
+            proj_size: 0.4,
+            proj_sharp: 0.6,
+            varix_count: 3.0,
+            varix_amp: 0.3,
+            seed: 1234.0,
+            jitter: 0.5,
+            pig_regime: 6.0,
+            pig_angle: 0.4,
+            pig_irregularity: 0.3,
+            ..ShellParams::default()
+        });
+        assert!(
+            plain.len() < loaded.len(),
+            "a sparse id should grow with ornament ({} vs {})",
+            plain.len(),
+            loaded.len()
+        );
+        // The all-default id still round-trips back to the defaults.
+        assert_eq!(decode_id(&plain).map(|p| encode_id(&p)).unwrap(), plain);
     }
 
     #[test]

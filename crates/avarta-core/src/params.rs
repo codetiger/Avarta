@@ -5,6 +5,7 @@
 //! `default`/`integer` is defined, and [`ShellParams::clamp_in_place`] pins every
 //! input to those bounds before any mesh math runs.
 
+use crate::idcodec::{base64url_decode, base64url_encode, BitReader, BitWriter};
 use serde::{Deserialize, Serialize};
 use std::f32::consts::TAU;
 
@@ -216,32 +217,38 @@ pub struct ParamRange {
 /// The degenerate high-W limpet/single-bivalve-valve case is intentionally out
 /// of scope. `seg_theta`/`seg_phi` are absent — they are internal and
 /// auto-derived from the ornament frequency, not user parameters.
+///
+/// Each `step` doubles as the share-id quantum ([`encode_id`]): it is kept as
+/// coarse as the shape visibly tolerates (`t`/`proj_pos` at 0.05, amplitudes and
+/// pigment knobs at 0.02, `seed` over 0..255) so a parameter never costs more
+/// bits than it needs. `w` stays at 0.01 — whorl expansion is exponential, so it
+/// is the one geometry knob that wants fine control.
 #[rustfmt::skip] // hand-aligned table — the single source of truth, kept scannable
 pub const PARAM_RANGES: &[ParamRange] = &[
     // --- Layer 1: coiling geometry ---
     ParamRange { key: "w",            label: "Whorl expansion W",       min: 1.05, max: 8.0,    step: 0.01, default: 2.0,  integer: false },
     ParamRange { key: "d",            label: "Openness D",              min: 0.0,  max: 0.95,   step: 0.01, default: 0.15, integer: false },
-    ParamRange { key: "t",            label: "Translation T",           min: 0.0,  max: 12.0,   step: 0.01, default: 1.5,  integer: false },
+    ParamRange { key: "t",            label: "Translation T",           min: 0.0,  max: 12.0,   step: 0.05, default: 1.5,  integer: false },
     ParamRange { key: "n",            label: "Whorls n",                min: 0.5,  max: 20.0,   step: 0.1,  default: 5.0,  integer: false },
-    ParamRange { key: "aspect",       label: "Aperture aspect",         min: 0.3,  max: 4.0,    step: 0.01, default: 1.0,  integer: false },
+    ParamRange { key: "aspect",       label: "Aperture aspect",         min: 0.3,  max: 4.0,    step: 0.02, default: 1.0,  integer: false },
     // --- Layer 2: ribs / cords / waves ---
     ParamRange { key: "rib_ax_count", label: "Axial ribs / waves",      min: 0.0,  max: 40.0,   step: 1.0,  default: 0.0,  integer: true  },
-    ParamRange { key: "rib_ax_amp",   label: "Axial amplitude",         min: 0.0,  max: 0.6,    step: 0.01, default: 0.0,  integer: false },
+    ParamRange { key: "rib_ax_amp",   label: "Axial amplitude",         min: 0.0,  max: 0.6,    step: 0.02, default: 0.0,  integer: false },
     ParamRange { key: "rib_sp_count", label: "Spiral cords",            min: 0.0,  max: 60.0,   step: 1.0,  default: 0.0,  integer: true  },
-    ParamRange { key: "rib_sp_amp",   label: "Spiral amplitude",        min: 0.0,  max: 0.6,    step: 0.01, default: 0.0,  integer: false },
-    ParamRange { key: "rib_sharp",    label: "Profile (wave → ridge)",  min: 0.0,  max: 1.0,    step: 0.01, default: 0.0,  integer: false },
+    ParamRange { key: "rib_sp_amp",   label: "Spiral amplitude",        min: 0.0,  max: 0.6,    step: 0.02, default: 0.0,  integer: false },
+    ParamRange { key: "rib_sharp",    label: "Profile (wave → ridge)",  min: 0.0,  max: 1.0,    step: 0.02, default: 0.0,  integer: false },
     // --- projections (nodules → spines) ---
     ParamRange { key: "proj_count",   label: "Projections / whorl",     min: 0.0,  max: 30.0,   step: 1.0,  default: 0.0,  integer: true  },
     ParamRange { key: "proj_rows",    label: "Rows around aperture",    min: 0.0,  max: 5.0,    step: 1.0,  default: 0.0,  integer: true  },
-    ParamRange { key: "proj_pos",     label: "Row position (φ)",        min: 0.0,  max: TAU,    step: 0.01, default: 0.0,  integer: false },
-    ParamRange { key: "proj_size",    label: "Size",                    min: 0.0,  max: 1.2,    step: 0.01, default: 0.0,  integer: false },
-    ParamRange { key: "proj_sharp",   label: "Sharpness (bead → needle)", min: 0.0, max: 1.0,   step: 0.01, default: 0.0,  integer: false },
+    ParamRange { key: "proj_pos",     label: "Row position (φ)",        min: 0.0,  max: TAU,    step: 0.05, default: 0.0,  integer: false },
+    ParamRange { key: "proj_size",    label: "Size",                    min: 0.0,  max: 1.2,    step: 0.02, default: 0.0,  integer: false },
+    ParamRange { key: "proj_sharp",   label: "Sharpness (bead → needle)", min: 0.0, max: 1.0,   step: 0.02, default: 0.0,  integer: false },
     // --- varices ---
     ParamRange { key: "varix_count",  label: "Varices / whorl",         min: 0.0,  max: 6.0,    step: 1.0,  default: 0.0,  integer: true  },
-    ParamRange { key: "varix_amp",    label: "Varix prominence",        min: 0.0,  max: 0.5,    step: 0.01, default: 0.0,  integer: false },
+    ParamRange { key: "varix_amp",    label: "Varix prominence",        min: 0.0,  max: 0.5,    step: 0.02, default: 0.0,  integer: false },
     // --- randomness ---
-    ParamRange { key: "seed",         label: "Seed",                    min: 0.0,  max: 9999.0, step: 1.0,  default: 0.0,  integer: true  },
-    ParamRange { key: "jitter",       label: "Jitter",                  min: 0.0,  max: 1.0,    step: 0.01, default: 0.0,  integer: false },
+    ParamRange { key: "seed",         label: "Seed",                    min: 0.0,  max: 255.0,  step: 1.0,  default: 0.0,  integer: true  },
+    ParamRange { key: "jitter",       label: "Jitter",                  min: 0.0,  max: 1.0,    step: 0.02, default: 0.0,  integer: false },
 ];
 
 /// Layer-3 pigmentation parameters, exposed to the UI separately from the shape
@@ -252,11 +259,11 @@ pub const PARAM_RANGES: &[ParamRange] = &[
 #[rustfmt::skip] // hand-aligned table — kept scannable, mirrors PARAM_RANGES
 pub const PIGMENT_RANGES: &[ParamRange] = &[
     ParamRange { key: "pig_regime",       label: "Pattern",      min: 0.0, max: 6.0, step: 1.0,  default: 0.0, integer: true  },
-    ParamRange { key: "pig_scale",        label: "Feature scale", min: 0.0, max: 1.0, step: 0.01, default: 0.5, integer: false },
-    ParamRange { key: "pig_contrast",     label: "Contrast",     min: 0.0, max: 1.0, step: 0.01, default: 0.5, integer: false },
-    ParamRange { key: "pig_density",      label: "Density",      min: 0.0, max: 1.0, step: 0.01, default: 0.5, integer: false },
-    ParamRange { key: "pig_angle",        label: "Obliqueness",  min: 0.0, max: 1.0, step: 0.01, default: 0.0, integer: false },
-    ParamRange { key: "pig_irregularity", label: "Irregularity", min: 0.0, max: 1.0, step: 0.01, default: 0.0, integer: false },
+    ParamRange { key: "pig_scale",        label: "Feature scale", min: 0.0, max: 1.0, step: 0.02, default: 0.5, integer: false },
+    ParamRange { key: "pig_contrast",     label: "Contrast",     min: 0.0, max: 1.0, step: 0.02, default: 0.5, integer: false },
+    ParamRange { key: "pig_density",      label: "Density",      min: 0.0, max: 1.0, step: 0.02, default: 0.5, integer: false },
+    ParamRange { key: "pig_angle",        label: "Obliqueness",  min: 0.0, max: 1.0, step: 0.02, default: 0.0, integer: false },
+    ParamRange { key: "pig_irregularity", label: "Irregularity", min: 0.0, max: 1.0, step: 0.02, default: 0.0, integer: false },
 ];
 
 impl ShellParams {
@@ -332,4 +339,120 @@ impl ShellParams {
         p.clamp_in_place();
         p
     }
+}
+
+// --- Compact share id (param set ⇄ short URL-safe string) -------------------
+//
+// Every range-table parameter has a `min`/`max`/`step`, and the UI sliders are
+// discrete on `step`, so quantising a value to its integer step-index is lossless
+// for anything the UI can produce. Because most shells leave most ornament/pigment
+// params at their default, the id is *sparse*: after the version byte comes a
+// presence bitmap (one bit per table param, in `PARAM_RANGES` then
+// `PIGMENT_RANGES` order — 1 = "differs from default"), then only the step-indices
+// of the present params, each in the minimum whole bits. A plain shell is a
+// handful of bytes; a fully-ornamented one costs the bitmap plus every field. Bit
+// widths derive from the tables at runtime, so they can never drift from the
+// params, and the version byte lets a decoder reject an incompatible id instead of
+// mis-reading it. The viewer-side palette/material (Layer 4) are not range-table
+// params and are encoded separately (also sparsely) by the web app.
+
+/// Share-id format version. Bump when the range tables change in a way that would
+/// make old ids decode to different shells (decoding rejects other versions).
+const ID_VERSION: u8 = 1;
+
+/// Why a share id failed to decode. Decoding is always fallible-without-panic so
+/// the viewer can fall back to defaults on a stale or corrupt link.
+#[derive(Debug, PartialEq, Eq)]
+pub enum IdError {
+    /// Not valid base64url, or the wrong number of bytes for this version.
+    BadLength,
+    /// A character outside the base64url alphabet.
+    BadChar,
+    /// A version byte this build does not understand.
+    BadVersion,
+}
+
+/// Discrete slider positions in `[min, max]` at `step` (≥ 1).
+fn range_levels(r: &ParamRange) -> u32 {
+    (((r.max - r.min) / r.step).round() as u32) + 1
+}
+
+/// Bits needed to index `levels` values: the smallest `b` with `2^b ≥ levels`
+/// (0 for a single-valued field).
+fn level_bits(levels: u32) -> u8 {
+    let mut b = 0u8;
+    while (1u64 << b) < levels as u64 {
+        b += 1;
+    }
+    b
+}
+
+/// Quantise a value to its step-index in `[0, levels)`.
+fn quantize(v: f32, r: &ParamRange, levels: u32) -> u32 {
+    (((v - r.min) / r.step).round() as i64).clamp(0, levels as i64 - 1) as u32
+}
+
+/// Encode a parameter set as a compact, URL-safe id (see the module note above).
+/// The id is stable: `encode_id(&decode_id(&encode_id(p)).unwrap()) == encode_id(p)`.
+pub fn encode_id(p: &ShellParams) -> String {
+    let mut q = p.clamped(); // pin to range before quantising
+    let mut w = BitWriter::new();
+    w.write(ID_VERSION as u32, 8);
+    // Pass 1: presence bitmap (one bit per table param) + collect what to append.
+    let mut present = Vec::new();
+    for r in PARAM_RANGES.iter().chain(PIGMENT_RANGES.iter()) {
+        let v = *q
+            .field_mut(r.key)
+            .expect("range-table key missing from field_mut");
+        let levels = range_levels(r);
+        let idx = quantize(v, r, levels);
+        let differs = idx != quantize(r.default, r, levels);
+        w.write(differs as u32, 1);
+        if differs {
+            present.push((idx, level_bits(levels)));
+        }
+    }
+    // Pass 2: the step-index of each present (non-default) param, in table order.
+    for (idx, bits) in present {
+        w.write(idx, bits);
+    }
+    base64url_encode(&w.into_bytes())
+}
+
+/// Decode a share id back into a clamped parameter set. Omitted (default) params
+/// keep their default; internal auto-derived fields (`seg_theta`/`seg_phi`) too.
+pub fn decode_id(id: &str) -> Result<ShellParams, IdError> {
+    let bytes = base64url_decode(id).ok_or(IdError::BadChar)?;
+    let mut rd = BitReader::new(&bytes);
+    if rd.read(8).ok_or(IdError::BadLength)? != ID_VERSION as u32 {
+        return Err(IdError::BadVersion);
+    }
+    // Presence bitmap, then the present params' indices — same order as encode.
+    let mut present = Vec::with_capacity(PARAM_RANGES.len() + PIGMENT_RANGES.len());
+    for _ in PARAM_RANGES.iter().chain(PIGMENT_RANGES.iter()) {
+        present.push(rd.read(1).ok_or(IdError::BadLength)? == 1);
+    }
+    let mut p = ShellParams::default();
+    for (r, &here) in PARAM_RANGES
+        .iter()
+        .chain(PIGMENT_RANGES.iter())
+        .zip(&present)
+    {
+        if !here {
+            continue;
+        }
+        let levels = range_levels(r);
+        let idx = rd.read(level_bits(levels)).ok_or(IdError::BadLength)?;
+        let value = r.min + idx.min(levels - 1) as f32 * r.step;
+        if let Some(slot) = p.field_mut(r.key) {
+            *slot = value;
+        }
+    }
+    // Reject trailing junk / truncation: the input must be exactly the bytes the
+    // payload needs (the final byte zero-padded).
+    if bytes.len() != rd.bits_read().div_ceil(8) {
+        return Err(IdError::BadLength);
+    }
+    p.clamp_in_place();
+    Ok(p)
 }

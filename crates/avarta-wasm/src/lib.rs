@@ -3,7 +3,9 @@
 //! JS calls `generate({ w, d, t, n, aspect, seg_theta, seg_phi })` and gets back
 //! a `JsMesh` whose getters return typed arrays ready for Three.js BufferAttributes.
 
-use avarta_core::{generate as core_generate, ShellParams, PARAM_RANGES, PIGMENT_RANGES};
+use avarta_core::{
+    decode_id, encode_id, generate as core_generate, ShellParams, PARAM_RANGES, PIGMENT_RANGES,
+};
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen(start)]
@@ -46,6 +48,24 @@ pub fn param_ranges() -> Result<JsValue, JsValue> {
 pub fn pigment_ranges() -> Result<JsValue, JsValue> {
     serde_wasm_bindgen::to_value(PIGMENT_RANGES)
         .map_err(|e| JsValue::from_str(&format!("pigment_ranges: {e}")))
+}
+
+/// Encode a params object into a compact, URL-safe share id (the mesh half of a
+/// share link — the viewer appends its own palette/material segment). Lossless to
+/// the slider step; see `avarta_core::encode_id`.
+#[wasm_bindgen]
+pub fn encode_params(params: JsValue) -> Result<String, JsValue> {
+    let p: ShellParams = serde_wasm_bindgen::from_value(params)
+        .map_err(|e| JsValue::from_str(&format!("invalid params: {e}")))?;
+    Ok(encode_id(&p))
+}
+
+/// Decode a share id back into a plain params object (clamped to range). Errors
+/// on a stale/corrupt id so the viewer can fall back to defaults.
+#[wasm_bindgen]
+pub fn decode_params(id: String) -> Result<JsValue, JsValue> {
+    let p = decode_id(&id).map_err(|e| JsValue::from_str(&format!("invalid id: {e:?}")))?;
+    serde_wasm_bindgen::to_value(&p).map_err(|e| JsValue::from_str(&format!("{e}")))
 }
 
 /// Mesh buffers. The getters hand JS `Float32Array` / `Uint32Array` /
