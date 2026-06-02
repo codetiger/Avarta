@@ -75,7 +75,11 @@ fn graded_thetas(
         }
         // Linear interpolation of θ within the crossing bin [s, s+1].
         let (lo, hi) = (cdf[s], cdf[s + 1]);
-        let frac = if hi > lo { (target - lo) / (hi - lo) } else { 0.0 };
+        let frac = if hi > lo {
+            (target - lo) / (hi - lo)
+        } else {
+            0.0
+        };
         out.push((s as f32 + frac) * dx);
     }
     out.push(total); // endpoint pinned exactly
@@ -154,8 +158,8 @@ fn plan_tessellation(p: &ShellParams, prof: &Profiles) -> Tessellation {
     // mesh.
     const MIN_SPC: f32 = 6.0;
     const AMP_REF: f32 = 0.6; // amplitude at/above which a feature keeps full sampling
-    // Ribs/cords are continuous two-sided waves: a flat floor still captures the
-    // oscillation even where it binds.
+                              // Ribs/cords are continuous two-sided waves: a flat floor still captures the
+                              // oscillation even where it binds.
     let spc_amp =
         |amp: f32, power: f32| (spc(power) * (amp.min(AMP_REF) / AMP_REF).sqrt()).max(MIN_SPC);
     // Projections are *localised* beads/spikes, so the floor scales with √power:

@@ -651,7 +651,10 @@ mod tests {
         for i in 0..theta_verts {
             let first = i * stride; // col 0
             let seam = i * stride + (stride - 1); // duplicate seam column
-            assert!(m.uvs[first * 2 + 1].abs() < 1e-6, "ring {i}: v must start at 0");
+            assert!(
+                m.uvs[first * 2 + 1].abs() < 1e-6,
+                "ring {i}: v must start at 0"
+            );
             assert!(
                 (m.uvs[seam * 2 + 1] - 1.0).abs() < 1e-6,
                 "ring {i}: seam v must be exactly 1.0"
