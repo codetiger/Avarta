@@ -30,6 +30,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
+          components: rustfmt, clippy
 
       - name: Cache cargo
         uses: actions/cache@v4
@@ -41,6 +42,11 @@ jobs:
           key: cargo-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml') }}
           restore-keys: |
             cargo-
+
+      - name: Check formatting and lints
+        run: |
+          cargo fmt --all -- --check
+          cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Run native tests
         run: cargo test -p avarta-core
