@@ -110,6 +110,49 @@ const PALETTE_DEFAULTS = {
   pattern: "#6f3d1d", // pigment (warm brown)
 };
 
+// Map a reaction–diffusion pigment field (w×h, one byte/texel) through a
+// 3-stop palette (base → accent → pattern) into a colour map. The field's axes
+// are the growth axes, so the mesh's own UVs (u=θ along the coil, v=φ around
+// the lip) map it with no distortion: clamp along the coil, repeat around the
+// periodic lip. Shared by the live viewer and the species thumbnails.
+function buildPigmentTexture(pigment, w, h, palette, renderer) {
+  // 256-entry LUT, lerped in linear space then encoded to sRGB bytes.
+  const base = new THREE.Color(palette.base);
+  const accent = new THREE.Color(palette.accent);
+  const pattern = new THREE.Color(palette.pattern);
+  const lut = new Uint8Array(256 * 3);
+  const c = new THREE.Color();
+  for (let i = 0; i < 256; i++) {
+    const t = i / 255;
+    if (t < 0.5) c.copy(base).lerp(accent, t / 0.5);
+    else c.copy(accent).lerp(pattern, (t - 0.5) / 0.5);
+    c.convertLinearToSRGB();
+    lut[i * 3] = Math.round(c.r * 255);
+    lut[i * 3 + 1] = Math.round(c.g * 255);
+    lut[i * 3 + 2] = Math.round(c.b * 255);
+  }
+
+  const data = new Uint8Array(w * h * 4);
+  for (let p = 0; p < w * h; p++) {
+    const v = pigment[p];
+    data[p * 4] = lut[v * 3];
+    data[p * 4 + 1] = lut[v * 3 + 1];
+    data[p * 4 + 2] = lut[v * 3 + 2];
+    data[p * 4 + 3] = 255;
+  }
+
+  const tex = new THREE.DataTexture(data, w, h, THREE.RGBAFormat);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = THREE.ClampToEdgeWrapping; // u = θ along the coil
+  tex.wrapT = THREE.RepeatWrapping; // v = φ around the lip (closed loop)
+  tex.generateMipmaps = true;
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  tex.magFilter = THREE.LinearFilter;
+  if (renderer) tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  tex.needsUpdate = true;
+  return tex;
+}
+
 class ShellViewer extends HTMLElement {
   static get observedAttributes() {
     return ATTRS;
@@ -382,7 +425,7 @@ class ShellViewer extends HTMLElement {
    * Returns an array of data-URL strings (or null for any preset that fails),
    * aligned with `paramSets`.
    */
-  async makeThumbnails(paramSets, size = 128) {
+  async makeThumbnails(entries, size = 128) {
     await ensureWasm();
     const r = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     r.setPixelRatio(1);
@@ -396,9 +439,10 @@ class ShellViewer extends HTMLElement {
     key.position.set(3, 5, 4);
     scene.add(key);
     const cam = new THREE.PerspectiveCamera(40, 1, 0.01, 100);
+    // Colour comes from the per-species pigment map, so the base stays white.
     const mat = new THREE.MeshPhysicalMaterial({
       side: THREE.DoubleSide,
-      color: 0xe7d8b6,
+      color: 0xffffff,
       roughness: 0.4,
       metalness: 0.0,
       clearcoat: 0.3,
@@ -407,14 +451,16 @@ class ShellViewer extends HTMLElement {
     scene.add(mesh);
 
     const out = [];
-    for (const params of paramSets) {
+    for (const entry of entries) {
+      // Accept either a bare params object or { params, palette }.
+      const params = entry.params || entry;
+      const palette = entry.palette || PALETTE_DEFAULTS;
       let m;
       try {
         // Lower tessellation than the live view — thumbnails are small, and some
-        // species (high n + ornament) are very dense at full resolution.
-        // pig_regime 0 (solid) short-circuits the reaction–diffusion sim: these
-        // shape-only thumbnails carry no UVs/colour map, so the field is unused.
-        m = generate({ ...DEFAULTS, seg_theta: 64, seg_phi: 32, ...params, pig_regime: 0 });
+        // species (high n + ornament) are very dense at full resolution. The
+        // pigment grid is independent of tessellation, so the pattern stays crisp.
+        m = generate({ ...DEFAULTS, seg_theta: 64, seg_phi: 32, ...params });
       } catch (e) {
         console.warn("[shell-viewer] thumbnail generate failed:", e);
         out.push(null);
@@ -423,11 +469,16 @@ class ShellViewer extends HTMLElement {
       const geo = new THREE.BufferGeometry();
       geo.setAttribute("position", new THREE.BufferAttribute(m.positions, 3));
       geo.setAttribute("normal", new THREE.BufferAttribute(m.normals, 3));
+      geo.setAttribute("uv", new THREE.BufferAttribute(m.uvs, 2));
       geo.setIndex(new THREE.BufferAttribute(m.indices, 1));
+      const tex = buildPigmentTexture(m.pigment, m.pig_w, m.pig_h, palette, r);
       m.free();
       geo.computeBoundingSphere();
       mesh.geometry.dispose();
       mesh.geometry = geo;
+      if (mat.map) mat.map.dispose();
+      mat.map = tex;
+      mat.needsUpdate = true;
 
       // Frame the camera to the mesh from the canonical front-and-above pose.
       const bs = geo.boundingSphere;
@@ -446,6 +497,7 @@ class ShellViewer extends HTMLElement {
     }
 
     mesh.geometry.dispose();
+    if (mat.map) mat.map.dispose();
     mat.dispose();
     r.dispose();
     r.forceContextLoss?.();
@@ -622,45 +674,7 @@ class ShellViewer extends HTMLElement {
    */
   _bakePigmentTexture() {
     if (!this._pigment || !this._pigW || !this._pigH) return;
-    const w = this._pigW;
-    const h = this._pigH;
-
-    // 256-entry colour LUT, lerped in linear space then encoded to sRGB bytes.
-    const base = new THREE.Color(this.palette.base);
-    const accent = new THREE.Color(this.palette.accent);
-    const pattern = new THREE.Color(this.palette.pattern);
-    const lut = new Uint8Array(256 * 3);
-    const c = new THREE.Color();
-    for (let i = 0; i < 256; i++) {
-      const t = i / 255;
-      if (t < 0.5) c.copy(base).lerp(accent, t / 0.5);
-      else c.copy(accent).lerp(pattern, (t - 0.5) / 0.5);
-      c.convertLinearToSRGB();
-      lut[i * 3] = Math.round(c.r * 255);
-      lut[i * 3 + 1] = Math.round(c.g * 255);
-      lut[i * 3 + 2] = Math.round(c.b * 255);
-    }
-
-    const pig = this._pigment;
-    const data = new Uint8Array(w * h * 4);
-    for (let p = 0; p < w * h; p++) {
-      const v = pig[p];
-      data[p * 4] = lut[v * 3];
-      data[p * 4 + 1] = lut[v * 3 + 1];
-      data[p * 4 + 2] = lut[v * 3 + 2];
-      data[p * 4 + 3] = 255;
-    }
-
-    const tex = new THREE.DataTexture(data, w, h, THREE.RGBAFormat);
-    tex.colorSpace = THREE.SRGBColorSpace;
-    tex.wrapS = THREE.ClampToEdgeWrapping; // u = θ along the coil
-    tex.wrapT = THREE.RepeatWrapping; // v = φ around the lip (closed loop)
-    tex.generateMipmaps = true;
-    tex.minFilter = THREE.LinearMipmapLinearFilter;
-    tex.magFilter = THREE.LinearFilter;
-    if (this.renderer) tex.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
-    tex.needsUpdate = true;
-
+    const tex = buildPigmentTexture(this._pigment, this._pigW, this._pigH, this.palette, this.renderer);
     if (this._pigTex) this._pigTex.dispose();
     this._pigTex = tex;
     this.material.map = tex;

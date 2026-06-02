@@ -533,13 +533,19 @@
           </span>
         </li>`).join("");
 
+      // Resolve a species' pigmentation/palette, filling unset values from the
+      // demo defaults / default swatches. Shared by the panel and the thumbnails.
+      const speciesPig = (s) => ({ ...DEMO_PIG, ...(s.pig || {}) });
+      const paletteDefaults = Object.fromEntries(PALETTE.map((c) => [c.key, c.value]));
+      const speciesPalette = (s) => ({ ...paletteDefaults, ...(s.palette || {}) });
+
       function applySpecies(i) {
         const s = SPECIES[i];
         if (!s) return;
         // Shape.
         for (const f of FIELDS) form.elements[f].value = s.params[f] ?? 0; // unset → 0
         // Pigmentation (Layer 3): species value → current demo default fallback.
-        const pig = { ...DEMO_PIG, ...(s.pig || {}) };
+        const pig = speciesPig(s);
         document.getElementById("pig-regime").value = pig.pig_regime;
         for (const r of PIGMENT) {
           if (r.key === "pig_regime") continue;
@@ -547,9 +553,10 @@
           if (el) el.value = pig[r.key] ?? r.default;
         }
         // Palette (Layer 4): species value → default swatch fallback.
+        const palette = speciesPalette(s);
         for (const c of PALETTE) {
           const el = document.getElementById("pal-" + c.key);
-          if (el) el.value = (s.palette && s.palette[c.key]) || c.value;
+          if (el) el.value = palette[c.key];
         }
         update();        // shape → geometry
         updatePigment(); // regime + RD sliders → pattern
@@ -561,11 +568,16 @@
         if (li) applySpecies(+li.dataset.i);
       });
 
-      // Render each species' actual geometry to a thumbnail once the wasm is ready.
+      // Render each species' actual geometry + pigmentation to a thumbnail once
+      // the wasm is ready (shape params merged with the species' RD pigment).
       async function loadThumbnails() {
         let urls;
         try {
-          urls = await viewer.makeThumbnails(SPECIES.map((s) => s.params), 128);
+          const entries = SPECIES.map((s) => ({
+            params: { ...s.params, ...speciesPig(s) },
+            palette: speciesPalette(s),
+          }));
+          urls = await viewer.makeThumbnails(entries, 128);
         } catch (e) {
           console.warn("thumbnails unavailable", e);
           return;
