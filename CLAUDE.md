@@ -43,7 +43,8 @@ Three crates/dirs, each consuming the previous one's *built output*:
   The whole generator is one function: `generate(&ShellParams) -> Mesh`. `Mesh` is flat GPU-ready buffers
   (positions/normals/uvs/indices) plus a `pigment` byte field (`pig_w`×`pig_h`).
 - **`crates/avarta-wasm`** — thin `wasm-bindgen` adapter (`cdylib`). Exposes `generate(params)`,
-  `param_ranges()`, `pigment_ranges()` to JS. Getters hand back typed-array copies; JS must call `.free()`.
+  `param_ranges()`, `pigment_ranges()`, and the share-id codec `encode_params(params)` /
+  `decode_params(id)` to JS. Getters hand back typed-array copies; JS must call `.free()`.
 - **`web/`** — Vite app. `<avarta-viewer>` (`avarta-viewer.js`) is a custom element rendering into shadow
   DOM; `index.html` builds the control panel. `three` + `three-gpu-pathtracer` are bundled from npm as
   **one deduped `three` instance** (required by the path tracer); the path tracer is lazily imported.
@@ -91,8 +92,7 @@ A Python + Node test rig that renders each species and pairs it with a real refe
 `report.html` for **human** shape-matching (it renders; you judge). It reaches the generator **through the
 prebuilt `web/pkg` wasm, exactly like the web page** (`extract_mesh.mjs` calls the same `generate`) and
 **never rebuilds or modifies the Rust crates**. `species.json` is the catalog (params + `coverage` rating
-+ notes); `coverage` doubles as the feature backlog. See `harness/README.md`. (Note: that README still
-refers to `shell_wasm.js`; the actual built module is `avarta_wasm.js`.)
++ notes); `coverage` doubles as the feature backlog. See `harness/README.md`.
 
 Run: `cd harness && python3 -m venv .venv && . .venv/bin/activate && pip install -r requirements.txt`,
 then `python fetch_references.py` (once) and `python render_catalog.py` (`--only <slug>` for a subset).

@@ -10,8 +10,9 @@ The model has four layers, each built on top of the previous one:
 3. **Pigmentation pattern** — the *layout* of color on the surface.
 4. **Color & material** — the actual colors and finish.
 
-> Scope note: ID/UUID packing is deliberately **out of scope** here — that is the last step.
-> This document only defines *what* the parameters mean and their natural ranges.
+> Scope note: this document defines *what* the parameters mean and their natural ranges, not how
+> they are serialised. Compact bit-packing into a shareable id is now implemented as the **share-id
+> codec** (`encode_id` / `crates/avarta-core/src/idcodec.rs`); see the README's "Share links".
 >
 > Implementation note: the **enforced** ranges (slider `min`/`max`/`step` + input clamping) live in
 > one place — `PARAM_RANGES` in `crates/avarta-core/src/lib.rs`. The mesh generator clamps every input
@@ -212,7 +213,6 @@ To keep every slider mapped to a distinct, common axis of natural variation:
 
 ## Deferred / future
 
-- **ID / UUID packing** — quantizing and bit-packing these into a compact identifier (last step).
 - **Pigmentation refinement** — the RD regimes (Layer 3) are empirically tuned approximations; the
   chevron/`tented` (*Conus textile*) family especially can be sharpened against the species harness.
   A true full Meinhardt activator–inhibitor/hormone model would deepen the emergent realism further.
