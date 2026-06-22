@@ -1,12 +1,12 @@
 # Avarta
 
-[![A path-traced render of a generated auger shell with brown spiral banding, floating against a sky](images/avarta.jpg)](https://codetiger.github.io/Avarta/)
+[![A path-traced render of a generated auger shell with brown spiral banding, floating against a sky](images/avarta.jpg)](https://codetiger.in/avarta/)
 
 Avarta builds the 3D shape of a seashell from a small set of numbers and renders it in the
 browser in real time. The shape, the surface sculpture, and the colour banding are all
 computed, not modelled by hand.
 
-Live demo: https://codetiger.github.io/Avarta/
+Live demo: https://codetiger.in/avarta/
 
 The name is Sanskrit (आवर्त, "whorl" or "coil"). A Rust core sweeps a logarithmic spiral to
 lay down the coiled tube, then runs a small reaction–diffusion simulation along the growing
@@ -110,7 +110,7 @@ crates/avarta-wasm   wasm-bindgen adapter: JS typed arrays (positions/normals/uv
 web/                 Vite app: index.html control panel and the <avarta-viewer> component (Layer 4).
 harness/             Python and Node comparison rig that renders each species next to a real
                      reference photo for shape matching (see harness/README.md).
-.github/workflows    GitHub Pages build and deploy (wasm and Vite).
+.github/workflows    CI quality gates: format, lint, native tests, and wasm + web build.
 ```
 
 A few notes if you work on the code:
@@ -134,6 +134,7 @@ A few notes if you work on the code:
 ## Tests and CI
 
 The math core is unit-tested on its own with `cargo test -p avarta-core`, no wasm toolchain
-needed. Every push runs those tests along with `cargo fmt --check` and `clippy -D warnings`,
-then rebuilds the wasm and the web app and republishes the live demo from `main`
-(`.github/workflows/deploy.yml`).
+needed. Every push and pull request runs those tests along with `cargo fmt --check` and
+`clippy -D warnings`, then rebuilds the wasm and the web app to confirm both still build
+(`.github/workflows/ci.yml`). Deployment of the [live demo](https://codetiger.in/avarta/) is
+handled outside this repo.

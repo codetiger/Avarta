@@ -24,7 +24,7 @@ wasm-pack build crates/avarta-wasm --target web --out-dir ../../web/pkg
 # Run the web dev server (installs deps on first run) → http://localhost:8090
 cd web && npm install && npm run dev
 
-# Production web build (outputs web/dist/, base "./" for the GitHub Pages subpath)
+# Production web build (outputs web/dist/, base "./" for the "/avarta/" subpath)
 cd web && npm run build
 ```
 
@@ -32,8 +32,10 @@ Vite hot-reloads JS/HTML, but the `.wasm` is treated as a static asset — **a R
 until you re-run `wasm-pack`**. Prerequisites: Rust stable + `rustup target add wasm32-unknown-unknown`,
 `wasm-pack`, Node 18+.
 
-CI (`.github/workflows/deploy.yml`, on push to `main`): native tests → `wasm-pack build --release` →
-`npm ci && npm run build` → publish `web/dist/` to GitHub Pages.
+CI (`.github/workflows/ci.yml`, on push to `main` and pull requests) runs quality gates only:
+`cargo fmt --check` + `clippy -D warnings` → native tests → `wasm-pack build --release` →
+`npm ci && npm run build` (build verification, no deploy). The live demo at
+https://codetiger.in/avarta/ is deployed outside this repo.
 
 ## Architecture
 
